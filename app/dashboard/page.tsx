@@ -31,13 +31,13 @@ import {
   Settings2,
   Trash2,
   Upload,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
-  Line,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -48,20 +48,12 @@ import {
 import Papa from "papaparse";
 
 /**
- * Viral Ad Media — Financial Dashboard
+ * Viral Ad Media — Financial Dashboard (with API Sync)
  * Next.js + Tailwind + shadcn/ui + recharts + PapaParse
  *
- * Features
- * - At-a-glance KPIs (Spend, Revenue, ROAS, Leads, Purchases)
- * - Interactive filters (date, channel, product, search, min spend)
- * - Threshold controls to auto-flag Kill / Optimize / Scale
- * - Charts: ROAS by Product, Spend vs Revenue over time, ROAS vs CPA scatter
- * - Ad/Product table with CPC, CPL, CPA, CPCB, ROAS
- * - CSV import (with header), CSV template download, CSV export (filtered)
- * - Colorful, accessible design with clear visual hierarchy
- *
- * Data expectations (CSV headers):
- * date,channel,campaign,product,ad,impressions,clicks,leads,checkouts,purchases,ad_spend,revenue
+ * New in this version:
+ * - "Sync from APIs" button (Meta/Google/TikTok via /api/import/merge)
+ * - Date range + level controls for syncing
  */
 
 type Row = {
@@ -79,7 +71,7 @@ type Row = {
   revenue: number;
 };
 
-// --- Fake seed data (replace via CSV upload) ---
+// --- Fake seed data (replace via CSV upload or API sync) ---
 const SEED: Row[] = [
   {
     date: "2025-08-01",
@@ -275,8 +267,8 @@ function aggregate(rows: Row[]) {
 function statusFor(agg: ReturnType<typeof aggregate>, cfg: Thresholds) {
   const { minSpend, minClicks, roasKill, roasScale, cpaKill, cpaGood } = cfg;
   const meetsVolume = agg.spend >= minSpend && agg.clicks >= minClicks;
-  if (meetsVolume && (agg.roas != null && agg.roas < roasKill || (cpaKill != null && agg.cpa != null && agg.cpa > cpaKill))) return "Kill" as const;
-  if (agg.roas != null && agg.roas >= roasScale || (cpaGood != null && agg.cpa != null && agg.cpa <= cpaGood)) return "Scale" as const;
+  if (meetsVolume && ((agg.roas != null && agg.roas < roasKill) || (cpaKill != null && agg.cpa != null && agg.cpa > cpaKill))) return "Kill" as const;
+  if ((agg.roas != null && agg.roas >= roasScale) || (cpaGood != null && agg.cpa != null && agg.cpa <= cpaGood)) return "Scale" as const;
   return "Optimize" as const;
 }
 
@@ -341,6 +333,10 @@ function GradientHeader() {
   );
 }
 
+function yyyymmdd(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
 export default function FinancialDashboard() {
   const [rows, setRows] = useState<Row[]>(SEED);
   const [query, setQuery] = useState("");
@@ -353,6 +349,14 @@ export default function FinancialDashboard() {
   const [cpaKill, setCpaKill] = useState<number | "">("");
   const [cpaGood, setCpaGood] = useState<number | "">("");
   const [mode, setMode] = useState<"ad" | "product">("ad");
+
+  // API Sync controls
+  const today = new Date();
+  const twoWeeksAgo = new Date(Date.now() - 13 * 24 * 3600 * 1000);
+  const [from, setFrom] = useState<string>(yyyymmdd(twoWeeksAgo));
+  const [to, setTo] = useState<string>(yyyymmdd(today));
+  const [syncLevel, setSyncLevel] = useState<"ad" | "campaign">("ad");
+  const [syncLoading, setSyncLoading] = useState(false);
 
   const thresholds: Thresholds = {
     minSpend,
@@ -540,12 +544,28 @@ export default function FinancialDashboard() {
     );
   }
 
+  // ── API Sync function (uses your /api/import/merge endpoint) ─────────────────
+  async function handleSync(fromDate: string, toDate: string, level: "ad" | "campaign" = "ad") {
+    try {
+      setSyncLoading(true);
+      const params = new URLSearchParams({ from: fromDate, to: toDate, level });
+      const res = await fetch(`/api/import/merge?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: Row[] = await res.json();
+      setRows(data);
+    } catch (err: any) {
+      alert(`Sync failed: ${err?.message || err}`);
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-violet-50 to-cyan-50 p-4 sm:p-6 md:p-8">
       <GradientHeader />
 
       {/* Controls */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 mb-6">
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur">
           <CardContent className="p-4">
             <div className="flex gap-2 items-center">
@@ -629,6 +649,41 @@ export default function FinancialDashboard() {
               </TabsList>
             </Tabs>
             <p className="text-xs text-slate-500 mt-2">Use <span className="font-semibold">Ad</span> to spot winning/losing creatives; <span className="font-semibold">Product</span> for funnel-level decisions.</p>
+          </CardContent>
+        </Card>
+
+        {/* NEW: Sync from APIs */}
+        <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2 text-slate-600"><CalendarIcon className="h-4 w-4" />
+              <span className="text-sm font-medium">Sync from APIs</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-500">From</label>
+                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">To</label>
+                <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-slate-500">Level</label>
+                <Select value={syncLevel} onValueChange={(v) => setSyncLevel(v as any)}>
+                  <SelectTrigger><SelectValue placeholder="Level" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ad">Ad</SelectItem>
+                    <SelectItem value="campaign">Campaign</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 flex items-center gap-2">
+                <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel)} className="gap-2">
+                  <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"}
+                </Button>
+                <span className="text-xs text-slate-500">(Requires API keys on your server or Vercel)</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
