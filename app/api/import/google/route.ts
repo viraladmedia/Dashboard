@@ -7,6 +7,25 @@ import { GoogleAdsApi } from "google-ads-api";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Minimal shape for a GAQL row we use
+type GoogleAdsQueryRow = {
+  segments?: { date?: string };
+  campaign?: { name?: string };
+  entity_name?: string;
+  metrics?: {
+    impressions?: string | number;
+    clicks?: string | number;
+    cost_micros?: string | number;
+    conversions?: string | number;
+    conversions_value?: string | number;
+  };
+};
+
+function asNumber(v: unknown): number {
+  const n = typeof v === "string" ? Number(v) : (v as number);
+  return Number.isFinite(n) ? (n as number) : 0;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -59,18 +78,18 @@ export async function GET(req: NextRequest) {
       "WHERE segments.date BETWEEN '" + from + "' AND '" + to + "'",
     ].join("\n");
 
-    const resp = await customer.query(query);
+    const resp = (await customer.query(query)) as unknown as GoogleAdsQueryRow[];
 
-    const rows: Row[] = resp.map((r: any) => {
-      const date = r.segments?.date as string;
-      const campaign = r.campaign?.name || "";
-      const ad = r.entity_name || "";
-      const impressions = Number(r.metrics?.impressions || 0);
-      const clicks = Number(r.metrics?.clicks || 0);
-      const spend = Number(r.metrics?.cost_micros || 0) / 1_000_000; // micros → currency
-      const purchases = Number(r.metrics?.conversions || 0);
-      const revenue = Number(r.metrics?.conversions_value || 0);
-      const product = campaign.split(" - ")[0] || campaign; // simple product parse
+    const rows: Row[] = resp.map((r) => {
+      const date = r.segments?.date ?? "";
+      const campaign = r.campaign?.name ?? "";
+      const ad = r.entity_name ?? "";
+      const impressions = asNumber(r.metrics?.impressions);
+      const clicks = asNumber(r.metrics?.clicks);
+      const spend = asNumber(r.metrics?.cost_micros) / 1_000_000; // micros → currency
+      const purchases = asNumber(r.metrics?.conversions);
+      const revenue = asNumber(r.metrics?.conversions_value);
+      const product = (campaign.split(" - ")[0] || campaign).trim();
 
       return emptyRow({
         date,
@@ -93,7 +112,8 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(rows);
-  } catch (e: any) {
-    return NextResponse.json({ error: String(e?.message || e) }, { status: 500 });
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
