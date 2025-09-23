@@ -1,4 +1,6 @@
 // File: app/api/import/tiktok/route.ts
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { Row, emptyRow } from "@/lib/row";
 
