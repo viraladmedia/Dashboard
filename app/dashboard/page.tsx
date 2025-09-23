@@ -745,7 +745,7 @@ export default function FinancialDashboard() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis type="number" dataKey="roas" name="ROAS" tickFormatter={(v) => `${v.toFixed(1)}x`} />
                 <YAxis type="number" dataKey="cpa" name="CPA" tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(v: any, n: string, p: any) => (n === "roas" ? `${Number(v).toFixed(2)}x` : formatCurrency(Number(v)))} cursor={{ strokeDasharray: "3 3" }} />
+                <Tooltip formatter={(v: any, n: string) => (n === "roas" ? `${Number(v).toFixed(2)}x` : formatCurrency(Number(v)))} cursor={{ strokeDasharray: "3 3" }} />
                 <Scatter data={roasVsCpa} name={mode === "ad" ? "Ads" : "Products"} />
               </ScatterChart>
             </ResponsiveContainer>
