@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
     });
 
     const customer = client.Customer({
-      customer_account_id: customerId,
+      customer_id: customerId,
       login_customer_id: loginCustomerId,
       refresh_token: refreshToken,
     });
