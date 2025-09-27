@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: app/api/import/meta/health/route.ts
 import { NextResponse } from "next/server";
 export const runtime = "nodejs";
