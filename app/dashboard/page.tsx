@@ -553,10 +553,15 @@ export default function FinancialDashboard() {
       const params = new URLSearchParams({ from: fromDate, to: toDate, level });
       const res = await fetch(`/api/import/merge?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data: Row[] = await res.json();
+      const data = await res.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        alert("No rows returned from APIs for this date range/credentials. Keeping current data.");
+        return; // <-- do NOT wipe your current table
+      }
       setRows(data);
-    } catch (err: any) {
-      alert(`Sync failed: ${err?.message || err}`);
+    } catch (err: unknown) {
+      alert(`Sync failed: ${(err as Error).message}`);
     } finally {
       setSyncLoading(false);
     }
