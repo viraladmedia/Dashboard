@@ -6,15 +6,26 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from") || searchParams.get("date_from") || "";
-  const to = searchParams.get("to") || searchParams.get("date_to") || "";
+  const from = searchParams.get("from") || "";
+  const to = searchParams.get("to") || "";
   const level = (searchParams.get("level") || "ad").toLowerCase();
   const format = (searchParams.get("format") || "json").toLowerCase();
+  const datePreset = searchParams.get("date_preset") || "";
 
   const origin = req.headers.get("x-forwarded-host") || req.headers.get("host");
   const proto = req.headers.get("x-forwarded-proto") || "https";
   const base = `${proto}://${origin}`;
-  const qs = new URLSearchParams({ from, to, level });
+
+  // Build downstream query
+  const qs = new URLSearchParams({ level });
+  if (from && to) {
+    qs.set("from", from);
+    qs.set("to", to);
+  } else if (datePreset) {
+    qs.set("date_preset", datePreset);
+  } else {
+    qs.set("date_preset", "last_30d"); // sensible default
+  }
 
   const tasks: Promise<Response>[] = [];
   if (process.env.META_ACCESS_TOKEN && process.env.META_AD_ACCOUNT_ID) {
@@ -28,7 +39,6 @@ export async function GET(req: NextRequest) {
   }
 
   const results = await Promise.allSettled(tasks);
-
   const rows: Row[] = [];
   for (const r of results) {
     if (r.status === "fulfilled" && r.value.ok) {
@@ -39,9 +49,7 @@ export async function GET(req: NextRequest) {
 
   if (format === "csv") {
     const { rowsToCSV } = await import("@/lib/csv");
-    const csv = rowsToCSV(rows);
-    return new NextResponse(csv, { headers: { "Content-Type": "text/csv" } });
+    return new NextResponse(rowsToCSV(rows), { headers: { "Content-Type": "text/csv" } });
   }
-
   return NextResponse.json(rows);
 }
