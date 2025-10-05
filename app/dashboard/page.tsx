@@ -547,25 +547,43 @@ export default function FinancialDashboard() {
   }
 
   // ── API Sync function (uses your /api/import/merge endpoint) ─────────────────
-  async function handleSync(fromDate: string, toDate: string, level: "ad" | "campaign" = "ad") {
-    try {
-      setSyncLoading(true);
-      const params = new URLSearchParams({ from: fromDate, to: toDate, level });
-      const res = await fetch(`/api/import/merge?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+async function handleSync(fromDate: string, toDate: string, level: "ad" | "campaign" = "ad") {
+  try {
+    setSyncLoading(true);
 
-      if (!Array.isArray(data) || data.length === 0) {
-        alert("No rows returned from APIs for this date range/credentials. Keeping current data.");
-        return; // <-- do NOT wipe your current table
-      }
-      setRows(data);
-    } catch (err: unknown) {
-      alert(`Sync failed: ${(err as Error).message}`);
-    } finally {
-      setSyncLoading(false);
+    // First try the explicit range (if both provided)
+    let params = new URLSearchParams({ level });
+    if (fromDate && toDate) {
+      params.set("from", fromDate);
+      params.set("to", toDate);
+    } else {
+      params.set("date_preset", "last_30d");
     }
+
+    let res = await fetch(`/api/import/merge?${params.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let data = await res.json();
+
+    // If empty, retry with last_30d which you confirmed returns data
+    if (!Array.isArray(data) || data.length === 0) {
+      const retry = new URLSearchParams({ level, date_preset: "last_30d" });
+      res = await fetch(`/api/import/merge?${retry.toString()}`);
+      if (res.ok) data = await res.json();
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      alert("No rows returned from APIs for this range. Try Last 30 Days or widen your dates.");
+      return;
+    }
+
+    setRows(data);
+  } catch (err: unknown) {
+    alert(`Sync failed: ${(err as Error).message}`);
+  } finally {
+    setSyncLoading(false);
   }
+}
+
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-violet-50 to-cyan-50 p-4 sm:p-6 md:p-8">
