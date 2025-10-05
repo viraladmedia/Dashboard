@@ -704,7 +704,8 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
               </div>
               <div className="col-span-2 flex items-center gap-2">
                 <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel)} className="gap-2">
-                  <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"}
+                  {/* <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"} */}
+                  <Upload className="h-4 w-4" /> Sync (Last 30 Days)
                 </Button>
                 <span className="text-xs text-slate-500">(Requires API keys on your server or Vercel)</span>
               </div>
