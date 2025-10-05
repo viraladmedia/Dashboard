@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
+// File: app/dashboard/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React from "react";
 import {
   Card,
   CardContent,
@@ -51,11 +51,15 @@ import Papa from "papaparse";
 
 /**
  * Viral Ad Media — Financial Dashboard (with API Sync)
- * Next.js + Tailwind + shadcn/ui + recharts + PapaParse
+ * Next.js + Tailwind + shadcn/ui + Recharts + PapaParse
  *
- * New in this version:
- * - "Sync from APIs" button (Meta/Google/TikTok via /api/import/merge)
- * - Date range + level controls for syncing
+ * Features:
+ * - At-a-glance KPIs (Spend, Revenue, ROAS, Leads, Purchases)
+ * - Table with CPC, CPL, CPA, CPCB, ROAS and a Kill/Optimize/Scale status
+ * - Filters: search, channel, product; thresholds & minimums
+ * - Charts: ROAS by Product, Spend vs Revenue (by date), ROAS vs CPA scatter
+ * - CSV import/template/export
+ * - "Sync from APIs" button (calls /api/import/merge)
  */
 
 type Row = {
@@ -224,7 +228,11 @@ function safeDiv(n: number, d: number) {
 
 function formatCurrency(n: number | null | undefined) {
   if (n == null || Number.isNaN(n)) return "–";
-  return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
 }
 
 function fmt(n: number | null | undefined, digits = 2) {
@@ -232,7 +240,10 @@ function fmt(n: number | null | undefined, digits = 2) {
   return Number(n.toFixed(digits)).toLocaleString();
 }
 
-function by<T extends Record<string, any>>(arr: T[], key: (t: T) => string) {
+function by<T extends Record<string, unknown>>(
+  arr: T[],
+  key: (t: T) => string
+) {
   const map = new Map<string, T[]>();
   for (const it of arr) {
     const k = key(it);
@@ -269,8 +280,17 @@ function aggregate(rows: Row[]) {
 function statusFor(agg: ReturnType<typeof aggregate>, cfg: Thresholds) {
   const { minSpend, minClicks, roasKill, roasScale, cpaKill, cpaGood } = cfg;
   const meetsVolume = agg.spend >= minSpend && agg.clicks >= minClicks;
-  if (meetsVolume && ((agg.roas != null && agg.roas < roasKill) || (cpaKill != null && agg.cpa != null && agg.cpa > cpaKill))) return "Kill" as const;
-  if ((agg.roas != null && agg.roas >= roasScale) || (cpaGood != null && agg.cpa != null && agg.cpa <= cpaGood)) return "Scale" as const;
+  if (
+    meetsVolume &&
+    ((agg.roas != null && agg.roas < roasKill) ||
+      (cpaKill != null && agg.cpa != null && agg.cpa > cpaKill))
+  )
+    return "Kill" as const;
+  if (
+    (agg.roas != null && agg.roas >= roasScale) ||
+    (cpaGood != null && agg.cpa != null && agg.cpa <= cpaGood)
+  )
+    return "Scale" as const;
   return "Optimize" as const;
 }
 
@@ -284,7 +304,7 @@ type Thresholds = {
 };
 
 function useCSVImporter(setRows: (r: Row[]) => void) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
   const onPick = () => inputRef.current?.click();
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -294,19 +314,19 @@ function useCSVImporter(setRows: (r: Row[]) => void) {
       dynamicTyping: true,
       skipEmptyLines: true,
       complete: (res) => {
-        const parsed = (res.data as any[]).map((r) => ({
-          date: String(r.date ?? r.Date ?? r.DATE ?? ""),
-          channel: String(r.channel ?? r.Channel ?? r.CHANNEL ?? ""),
-          campaign: String(r.campaign ?? r.Campaign ?? r.CAMPAIGN ?? ""),
-          product: String(r.product ?? r.Product ?? r.PRODUCT ?? ""),
-          ad: String(r.ad ?? r.Ad ?? r.AD ?? r.creative ?? ""),
-          impressions: Number(r.impressions ?? r.Impressions ?? r.IMPR ?? r.impr ?? 0),
-          clicks: Number(r.clicks ?? r.Clicks ?? r.CLICKS ?? 0),
-          leads: Number(r.leads ?? r.Leads ?? r.LEADS ?? 0),
-          checkouts: Number(r.checkouts ?? r.Checkouts ?? r.checkout_started ?? 0),
-          purchases: Number(r.purchases ?? r.Purchases ?? r.Sales ?? r.orders ?? 0),
-          ad_spend: Number(r.ad_spend ?? r.spend ?? r.Spend ?? r.cost ?? 0),
-          revenue: Number(r.revenue ?? r.Revenue ?? r.rev ?? 0),
+        const parsed = (res.data as unknown[]).map((r: any) => ({
+          date: String((r as any).date ?? (r as any).Date ?? (r as any).DATE ?? ""),
+          channel: String((r as any).channel ?? (r as any).Channel ?? (r as any).CHANNEL ?? ""),
+          campaign: String((r as any).campaign ?? (r as any).Campaign ?? (r as any).CAMPAIGN ?? ""),
+          product: String((r as any).product ?? (r as any).Product ?? (r as any).PRODUCT ?? ""),
+          ad: String((r as any).ad ?? (r as any).Ad ?? (r as any).AD ?? (r as any).creative ?? ""),
+          impressions: Number((r as any).impressions ?? (r as any).Impressions ?? (r as any).IMPR ?? (r as any).impr ?? 0),
+          clicks: Number((r as any).clicks ?? (r as any).Clicks ?? (r as any).CLICKS ?? 0),
+          leads: Number((r as any).leads ?? (r as any).Leads ?? (r as any).LEADS ?? 0),
+          checkouts: Number((r as any).checkouts ?? (r as any).Checkouts ?? (r as any).checkout_started ?? 0),
+          purchases: Number((r as any).purchases ?? (r as any).Purchases ?? (r as any).Sales ?? (r as any).orders ?? 0),
+          ad_spend: Number((r as any).ad_spend ?? (r as any).spend ?? (r as any).Spend ?? (r as any).cost ?? 0),
+          revenue: Number((r as any).revenue ?? (r as any).Revenue ?? (r as any).rev ?? 0),
         })) as Row[];
         setRows(parsed);
       },
@@ -324,7 +344,9 @@ function GradientHeader() {
         <div>
           <div className="text-xs uppercase tracking-widest/relaxed opacity-90">Viral Ad Media, LLC</div>
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mt-1">Financial & Performance Dashboard</h1>
-          <p className="opacity-95 mt-1 text-sm md:text-base">Track Sales & Ad Spend • CPC • CPL • CPA • CPCB • ROAS — per funnel/product and ad.</p>
+          <p className="opacity-95 mt-1 text-sm md:text-base">
+            Track Sales & Ad Spend • CPC • CPL • CPA • CPCB • ROAS — per funnel/product and ad.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge className="bg-white/15 backdrop-blur text-white border border-white/30">Live Preview</Badge>
@@ -340,41 +362,51 @@ function yyyymmdd(d: Date) {
 }
 
 export default function FinancialDashboard() {
-  const [rows, setRows] = useState<Row[]>(SEED);
-  const [query, setQuery] = useState("");
-  const [channel, setChannel] = useState<string>("all");
-  const [product, setProduct] = useState<string>("all");
-  const [minSpend, setMinSpend] = useState<number>(500);
-  const [minClicks, setMinClicks] = useState<number>(100);
-  const [roasKill, setRoasKill] = useState<number>(1.0);
-  const [roasScale, setRoasScale] = useState<number>(3.0);
-  const [cpaKill, setCpaKill] = useState<number | "">("");
-  const [cpaGood, setCpaGood] = useState<number | "">("");
-  const [mode, setMode] = useState<"ad" | "product">("ad");
+  const [rows, setRows] = React.useState<Row[]>(SEED);
+  const [query, setQuery] = React.useState("");
+  const [channel, setChannel] = React.useState<string>("all");
+  const [product, setProduct] = React.useState<string>("all");
+  const [minSpend, setMinSpend] = React.useState<number>(500);
+  const [minClicks, setMinClicks] = React.useState<number>(100);
+  const [roasKill, setRoasKill] = React.useState<number>(1.0);
+  const [roasScale, setRoasScale] = React.useState<number>(3.0);
+  const [cpaKill, setCpaKill] = React.useState<number | "">("");
+  const [cpaGood, setCpaGood] = React.useState<number | "">("");
+  const [mode, setMode] = React.useState<"ad" | "product">("ad");
 
   // API Sync controls
   const today = new Date();
   const twoWeeksAgo = new Date(Date.now() - 13 * 24 * 3600 * 1000);
-  const [from, setFrom] = useState<string>(yyyymmdd(twoWeeksAgo));
-  const [to, setTo] = useState<string>(yyyymmdd(today));
-  const [syncLevel, setSyncLevel] = useState<"ad" | "campaign">("ad");
-  const [syncLoading, setSyncLoading] = useState(false);
+  const [from, setFrom] = React.useState<string>(yyyymmdd(twoWeeksAgo));
+  const [to, setTo] = React.useState<string>(yyyymmdd(today));
+  const [syncLevel, setSyncLevel] = React.useState<"ad" | "campaign">("ad");
+  const [syncLoading, setSyncLoading] = React.useState(false);
 
-  const thresholds: Thresholds = {
-    minSpend,
-    minClicks,
-    roasKill,
-    roasScale,
-    cpaKill: cpaKill === "" ? null : Number(cpaKill),
-    cpaGood: cpaGood === "" ? null : Number(cpaGood),
-  };
+  // Memoize thresholds to satisfy react-hooks/exhaustive-deps
+  const thresholds = React.useMemo(
+    () => ({
+      minSpend,
+      minClicks,
+      roasKill,
+      roasScale,
+      cpaKill: cpaKill === "" ? null : Number(cpaKill),
+      cpaGood: cpaGood === "" ? null : Number(cpaGood),
+    }),
+    [minSpend, minClicks, roasKill, roasScale, cpaKill, cpaGood]
+  );
 
   const { inputRef, onPick, onFile } = useCSVImporter(setRows);
 
-  const allChannels = useMemo(() => Array.from(new Set(rows.map((r) => r.channel))), [rows]);
-  const allProducts = useMemo(() => Array.from(new Set(rows.map((r) => r.product))), [rows]);
+  const allChannels = React.useMemo(
+    () => Array.from(new Set(rows.map((r) => r.channel))),
+    [rows]
+  );
+  const allProducts = React.useMemo(
+    () => Array.from(new Set(rows.map((r) => r.product))),
+    [rows]
+  );
 
-  const filtered = useMemo(() => {
+  const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (channel !== "all" && r.channel !== channel) return false;
@@ -385,10 +417,10 @@ export default function FinancialDashboard() {
     });
   }, [rows, query, channel, product]);
 
-  const totals = useMemo(() => aggregate(filtered), [filtered]);
+  const totals = React.useMemo(() => aggregate(filtered), [filtered]);
 
   // Grouping for table based on mode
-  const grouped = useMemo(() => {
+  const grouped = React.useMemo(() => {
     const keyFn = (r: Row) => (mode === "ad" ? `${r.product} | ${r.ad}` : r.product);
     const groups = by(filtered, keyFn);
     const out = Array.from(groups.entries()).map(([k, arr]) => {
@@ -415,7 +447,7 @@ export default function FinancialDashboard() {
   }, [filtered, thresholds, mode]);
 
   // Charts data
-  const roasByProduct = useMemo(() => {
+  const roasByProduct = React.useMemo(() => {
     const groups = by(filtered, (r) => r.product);
     return Array.from(groups.entries()).map(([product, arr]) => {
       const agg = aggregate(arr);
@@ -423,7 +455,7 @@ export default function FinancialDashboard() {
     });
   }, [filtered]);
 
-  const spendRevenueOverTime = useMemo(() => {
+  const spendRevenueOverTime = React.useMemo(() => {
     const groups = by(filtered, (r) => r.date);
     return Array.from(groups.entries())
       .map(([date, arr]) => {
@@ -433,7 +465,7 @@ export default function FinancialDashboard() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filtered]);
 
-  const roasVsCpa = useMemo(() => {
+  const roasVsCpa = React.useMemo(() => {
     return grouped.map((g) => ({
       name: mode === "ad" ? `${g.product}: ${g.ad}` : g.product,
       roas: g.roas ?? 0,
@@ -518,28 +550,50 @@ export default function FinancialDashboard() {
     };
     const Icon = s === "Scale" ? Rocket : s === "Kill" ? Trash2 : Settings2;
     return (
-      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${styles[s]}`}>
+      <span
+        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${styles[s]}`}
+      >
         <Icon className="h-3.5 w-3.5" /> {s}
       </span>
     );
   }
 
-  function KPI({ title, value, sub, trend }: { title: string; value: string; sub?: string; trend?: "up" | "down" }) {
+  function KPI({
+    title,
+    value,
+    sub,
+    trend,
+  }: {
+    title: string;
+    value: string;
+    sub?: string;
+    trend?: "up" | "down";
+  }) {
     const Trend = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : null;
     return (
       <Card className="rounded-2xl shadow-sm border-2 border-white/40 bg-white/80 backdrop-blur">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-slate-600">{title}</CardTitle>
+          <CardTitle className="text-sm font-medium text-slate-600">
+            {title}
+          </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="flex items-end gap-2">
-            <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">{value}</div>
+            <div className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+              {value}
+            </div>
             {Trend && (
-              <span className={`inline-flex items-center gap-1 text-xs ${trend === "up" ? "text-emerald-600" : "text-rose-600"}`}>
+              <span
+                className={`inline-flex items-center gap-1 text-xs ${
+                  trend === "up" ? "text-emerald-600" : "text-rose-600"
+                }`}
+              >
                 <Trend className="h-3.5 w-3.5" /> {sub}
               </span>
             )}
-            {!Trend && sub && <span className="text-xs text-slate-500">{sub}</span>}
+            {!Trend && sub && (
+              <span className="text-xs text-slate-500">{sub}</span>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -547,43 +601,48 @@ export default function FinancialDashboard() {
   }
 
   // ── API Sync function (uses your /api/import/merge endpoint) ─────────────────
-async function handleSync(fromDate: string, toDate: string, level: "ad" | "campaign" = "ad") {
-  try {
-    setSyncLoading(true);
+  async function handleSync(
+    fromDate: string,
+    toDate: string,
+    level: "ad" | "campaign" = "ad"
+  ) {
+    try {
+      setSyncLoading(true);
 
-    // First try the explicit range (if both provided)
-    const params = new URLSearchParams({ level });
-    if (fromDate && toDate) {
-      params.set("from", fromDate);
-      params.set("to", toDate);
-    } else {
-      params.set("date_preset", "last_30d");
+      // Prefer explicit range if both provided, else use last_30d
+      let params = new URLSearchParams({ level });
+      if (fromDate && toDate) {
+        params.set("from", fromDate);
+        params.set("to", toDate);
+      } else {
+        params.set("date_preset", "last_30d");
+      }
+
+      let res = await fetch(`/api/import/merge?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      let data: unknown = await res.json();
+
+      // Retry with last_30d if empty
+      if (!Array.isArray(data) || data.length === 0) {
+        const retry = new URLSearchParams({ level, date_preset: "last_30d" });
+        res = await fetch(`/api/import/merge?${retry.toString()}`);
+        if (res.ok) data = await res.json();
+      }
+
+      if (!Array.isArray(data) || data.length === 0) {
+        alert(
+          "No rows returned from APIs for this range. Try Last 30 Days or widen your dates."
+        );
+        return;
+      }
+
+      setRows(data as Row[]);
+    } catch (err: unknown) {
+      alert(`Sync failed: ${(err as Error).message}`);
+    } finally {
+      setSyncLoading(false);
     }
-
-    let res = await fetch(`/api/import/merge?${params.toString()}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    let data = await res.json();
-
-    // If empty, retry with last_30d which you confirmed returns data
-    if (!Array.isArray(data) || data.length === 0) {
-      const retry = new URLSearchParams({ level, date_preset: "last_30d" });
-      res = await fetch(`/api/import/merge?${retry.toString()}`);
-      if (res.ok) data = await res.json();
-    }
-
-    if (!Array.isArray(data) || data.length === 0) {
-      alert("No rows returned from APIs for this range. Try Last 30 Days or widen your dates.");
-      return;
-    }
-
-    setRows(data);
-  } catch (err: unknown) {
-    alert(`Sync failed: ${(err as Error).message}`);
-  } finally {
-    setSyncLoading(false);
   }
-}
-
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-violet-50 to-cyan-50 p-4 sm:p-6 md:p-8">
@@ -596,23 +655,36 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
             <div className="flex gap-2 items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, campaign, ad…" className="pl-8" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search product, campaign, ad…"
+                  className="pl-8"
+                />
               </div>
               <Select value={channel} onValueChange={setChannel}>
-                <SelectTrigger className="w-36"><SelectValue placeholder="Channel" /></SelectTrigger>
+                <SelectTrigger className="w-36">
+                  <SelectValue placeholder="Channel" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Channels</SelectItem>
                   {allChannels.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={product} onValueChange={setProduct}>
-                <SelectTrigger className="w-44"><SelectValue placeholder="Product" /></SelectTrigger>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Product" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Products</SelectItem>
                   {allProducts.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -620,19 +692,64 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">Min Spend</span>
-                <div className="w-40"><Slider value={[minSpend]} min={0} max={5000} step={50} onValueChange={(v) => setMinSpend(v[0])} /></div>
-                <Badge variant="outline" className="bg-emerald-50 border-emerald-200 text-emerald-700">{formatCurrency(minSpend)}</Badge>
+                <div className="w-40">
+                  <Slider
+                    value={[minSpend]}
+                    min={0}
+                    max={5000}
+                    step={50}
+                    onValueChange={(v) => setMinSpend(v[0])}
+                  />
+                </div>
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-50 border-emerald-200 text-emerald-700"
+                >
+                  {formatCurrency(minSpend)}
+                </Badge>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">Min Clicks</span>
-                <div className="w-40"><Slider value={[minClicks]} min={0} max={2000} step={10} onValueChange={(v) => setMinClicks(v[0])} /></div>
-                <Badge variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">{fmt(minClicks, 0)}</Badge>
+                <div className="w-40">
+                  <Slider
+                    value={[minClicks]}
+                    min={0}
+                    max={2000}
+                    step={10}
+                    onValueChange={(v) => setMinClicks(v[0])}
+                  />
+                </div>
+                <Badge
+                  variant="outline"
+                  className="bg-blue-50 border-blue-200 text-blue-700"
+                >
+                  {fmt(minClicks, 0)}
+                </Badge>
               </div>
               <div className="hidden md:flex items-center gap-2 ml-auto">
-                <Button onClick={onPick} variant="secondary" className="gap-2"><Upload className="h-4 w-4" />Import CSV</Button>
-                <Button onClick={downloadTemplate} variant="outline" className="gap-2"><Download className="h-4 w-4" />Template</Button>
-                <Button onClick={exportFilteredCSV} className="gap-2"><Download className="h-4 w-4" />Export</Button>
-                <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
+                <Button onClick={onPick} variant="secondary" className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  Import CSV
+                </Button>
+                <Button
+                  onClick={downloadTemplate}
+                  variant="outline"
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Template
+                </Button>
+                <Button onClick={exportFilteredCSV} className="gap-2">
+                  <Download className="h-4 w-4" />
+                  Export
+                </Button>
+                <input
+                  ref={inputRef}
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={onFile}
+                />
               </div>
             </div>
           </CardContent>
@@ -640,25 +757,58 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
 
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2 text-slate-600"><Settings2 className="h-4 w-4" />
+            <div className="flex items-center gap-2 mb-2 text-slate-600">
+              <Settings2 className="h-4 w-4" />
               <span className="text-sm font-medium">Decision Thresholds</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-slate-500">ROAS – Kill below</label>
-                <Input type="number" step="0.1" value={roasKill} onChange={(e) => setRoasKill(Number(e.target.value))} />
+                <label className="text-xs text-slate-500">
+                  ROAS – Kill below
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={roasKill}
+                  onChange={(e) => setRoasKill(Number(e.target.value))}
+                />
               </div>
               <div>
-                <label className="text-xs text-slate-500">ROAS – Scale at/above</label>
-                <Input type="number" step="0.1" value={roasScale} onChange={(e) => setRoasScale(Number(e.target.value))} />
+                <label className="text-xs text-slate-500">
+                  ROAS – Scale at/above
+                </label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={roasScale}
+                  onChange={(e) => setRoasScale(Number(e.target.value))}
+                />
               </div>
               <div>
-                <label className="text-xs text-slate-500">CPA – Kill above (optional)</label>
-                <Input type="number" step="0.01" value={cpaKill} onChange={(e) => setCpaKill(e.target.value === "" ? "" : Number(e.target.value))} />
+                <label className="text-xs text-slate-500">
+                  CPA – Kill above (optional)
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={cpaKill}
+                  onChange={(e) =>
+                    setCpaKill(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                />
               </div>
               <div>
-                <label className="text-xs text-slate-500">CPA – Scale at/below (optional)</label>
-                <Input type="number" step="0.01" value={cpaGood} onChange={(e) => setCpaGood(e.target.value === "" ? "" : Number(e.target.value))} />
+                <label className="text-xs text-slate-500">
+                  CPA – Scale at/below (optional)
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={cpaGood}
+                  onChange={(e) =>
+                    setCpaGood(e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                />
               </div>
             </div>
           </CardContent>
@@ -666,36 +816,56 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
 
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2 text-slate-600"><Filter className="h-4 w-4" /><span className="text-sm font-medium">Group By</span></div>
-            <Tabs value={mode} onValueChange={(v) => setMode(v as any)}>
+            <div className="flex items-center gap-2 mb-2 text-slate-600">
+              <Filter className="h-4 w-4" />
+              <span className="text-sm font-medium">Group By</span>
+            </div>
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "ad" | "product")}>
               <TabsList className="grid grid-cols-2 w-full">
                 <TabsTrigger value="ad">Ad (Creative)</TabsTrigger>
                 <TabsTrigger value="product">Product / Funnel</TabsTrigger>
               </TabsList>
             </Tabs>
-            <p className="text-xs text-slate-500 mt-2">Use <span className="font-semibold">Ad</span> to spot winning/losing creatives; <span className="font-semibold">Product</span> for funnel-level decisions.</p>
+            <p className="text-xs text-slate-500 mt-2">
+              Use <span className="font-semibold">Ad</span> to spot winning/losing creatives;{" "}
+              <span className="font-semibold">Product</span> for funnel-level decisions.
+            </p>
           </CardContent>
         </Card>
 
         {/* NEW: Sync from APIs */}
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur">
           <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2 text-slate-600"><CalendarIcon className="h-4 w-4" />
+            <div className="flex items-center gap-2 mb-2 text-slate-600">
+              <CalendarIcon className="h-4 w-4" />
               <span className="text-sm font-medium">Sync from APIs</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-slate-500">From</label>
-                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                <Input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
               </div>
               <div>
                 <label className="text-xs text-slate-500">To</label>
-                <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                <Input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
               </div>
               <div className="col-span-2">
                 <label className="text-xs text-slate-500">Level</label>
-                <Select value={syncLevel} onValueChange={(v) => setSyncLevel(v as any)}>
-                  <SelectTrigger><SelectValue placeholder="Level" /></SelectTrigger>
+                <Select
+                  value={syncLevel}
+                  onValueChange={(v) => setSyncLevel(v as "ad" | "campaign")}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Level" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ad">Ad</SelectItem>
                     <SelectItem value="campaign">Campaign</SelectItem>
@@ -703,11 +873,22 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
                 </Select>
               </div>
               <div className="col-span-2 flex items-center gap-2">
-                <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel)} className="gap-2">
-                  {/* <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"} */}
+                <Button
+                  disabled={syncLoading}
+                  onClick={() => handleSync(from, to, syncLevel)}
+                  className="gap-2"
+                >
+                  <Upload className="h-4 w-4" />{" "}
+                  {syncLoading ? "Syncing…" : "Sync from APIs"}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={syncLoading}
+                  onClick={() => handleSync("", "", syncLevel)}
+                  className="gap-2"
+                >
                   <Upload className="h-4 w-4" /> Sync (Last 30 Days)
                 </Button>
-                <span className="text-xs text-slate-500">(Requires API keys on your server or Vercel)</span>
               </div>
             </div>
           </CardContent>
@@ -718,7 +899,12 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
       <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-5 mb-6">
         <KPI title="Ad Spend" value={formatCurrency(totals.spend)} sub="Total" trend="down" />
         <KPI title="Revenue" value={formatCurrency(totals.revenue)} sub="Total" trend="up" />
-        <KPI title="ROAS" value={totals.roas != null ? totals.roas.toFixed(2) + "x" : "–"} sub="Return" trend={totals.roas && totals.roas >= 1 ? "up" : "down"} />
+        <KPI
+          title="ROAS"
+          value={totals.roas != null ? totals.roas.toFixed(2) + "x" : "–"}
+          sub="Return"
+          trend={totals.roas && totals.roas >= 1 ? "up" : "down"}
+        />
         <KPI title="Leads" value={fmt(totals.leads, 0)} />
         <KPI title="Purchases" value={fmt(totals.purchases, 0)} />
       </div>
@@ -726,14 +912,31 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-3 mb-6">
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur lg:col-span-1">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-slate-700">ROAS by Product</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-700">
+              ROAS by Product
+            </CardTitle>
+          </CardHeader>
           <CardContent className="pt-0 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={roasByProduct}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="product" hide={false} tick={{ fontSize: 11 }} angle={-15} height={50} interval={0} />
-                <YAxis yAxisId="left" tickFormatter={(v) => `${v.toFixed(1)}x`} />
-                <Tooltip formatter={(val: any, name: string) => (name === "roas" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
+                <XAxis
+                  dataKey="product"
+                  hide={false}
+                  tick={{ fontSize: 11 }}
+                  angle={-15}
+                  height={50}
+                  interval={0}
+                />
+                <YAxis yAxisId="left" tickFormatter={(v: number) => `${v.toFixed(1)}x`} />
+                <Tooltip
+                  formatter={(val: unknown, name: string) =>
+                    name === "roas"
+                      ? `${Number(val as number).toFixed(2)}x`
+                      : formatCurrency(Number(val as number))
+                  }
+                />
                 <Legend />
                 <Bar dataKey="roas" yAxisId="left" name="ROAS" radius={[6, 6, 0, 0]} />
               </BarChart>
@@ -743,16 +946,23 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
 
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur lg:col-span-2">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2"><LineChartIcon className="h-4 w-4" /> Spend vs Revenue (by Date)</CardTitle>
-            <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">Trend</Badge>
+            <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+              <LineChartIcon className="h-4 w-4" /> Spend vs Revenue (by Date)
+            </CardTitle>
+            <Badge variant="outline" className="border-blue-200 text-blue-700 bg-blue-50">
+              Trend
+            </Badge>
           </CardHeader>
           <CardContent className="pt-0 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={spendRevenueOverTime}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" />
-                <YAxis yAxisId="left" tickFormatter={(v) => `$${v / 1000}k`} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                <YAxis
+                  yAxisId="left"
+                  tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+                />
+                <Tooltip formatter={(v: unknown) => formatCurrency(Number(v as number))} />
                 <Legend />
                 <Bar dataKey="spend" yAxisId="left" name="Ad Spend" radius={[6, 6, 0, 0]} />
                 <Bar dataKey="revenue" yAxisId="left" name="Revenue" radius={[6, 6, 0, 0]} />
@@ -762,14 +972,35 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
         </Card>
 
         <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur lg:col-span-3">
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold text-slate-700">ROAS vs CPA (bubble size = Spend)</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-slate-700">
+              ROAS vs CPA (bubble size = Spend)
+            </CardTitle>
+          </CardHeader>
           <CardContent className="pt-0 h-72">
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" dataKey="roas" name="ROAS" tickFormatter={(v) => `${v.toFixed(1)}x`} />
-                <YAxis type="number" dataKey="cpa" name="CPA" tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(v: any, n: string) => (n === "roas" ? `${Number(v).toFixed(2)}x` : formatCurrency(Number(v)))} cursor={{ strokeDasharray: "3 3" }} />
+                <XAxis
+                  type="number"
+                  dataKey="roas"
+                  name="ROAS"
+                  tickFormatter={(v: number) => `${v.toFixed(1)}x`}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="cpa"
+                  name="CPA"
+                  tickFormatter={(v: number) => `$${v.toFixed(0)}`}
+                />
+                <Tooltip
+                  formatter={(v: unknown, n: string) =>
+                    n === "roas"
+                      ? `${Number(v as number).toFixed(2)}x`
+                      : formatCurrency(Number(v as number))
+                  }
+                  cursor={{ strokeDasharray: "3 3" }}
+                />
                 <Scatter data={roasVsCpa} name={mode === "ad" ? "Ads" : "Products"} />
               </ScatterChart>
             </ResponsiveContainer>
@@ -780,12 +1011,29 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
       {/* Table */}
       <Card className="rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-semibold text-slate-700">{mode === "ad" ? "Ad-Level Performance" : "Product/Funnel Performance"}</CardTitle>
+          <CardTitle className="text-sm font-semibold text-slate-700">
+            {mode === "ad" ? "Ad-Level Performance" : "Product/Funnel Performance"}
+          </CardTitle>
           <div className="md:hidden flex items-center gap-2">
-            <Button onClick={onPick} variant="secondary" className="gap-2"><Upload className="h-4 w-4" />Import CSV</Button>
-            <Button onClick={downloadTemplate} variant="outline" className="gap-2"><Download className="h-4 w-4" />Template</Button>
-            <Button onClick={exportFilteredCSV} className="gap-2"><Download className="h-4 w-4" />Export</Button>
-            <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
+            <Button onClick={onPick} variant="secondary" className="gap-2">
+              <Upload className="h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button onClick={downloadTemplate} variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Template
+            </Button>
+            <Button onClick={exportFilteredCSV} className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={onFile}
+            />
           </div>
         </CardHeader>
         <CardContent className="pt-0 overflow-x-auto">
@@ -810,18 +1058,41 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
             </thead>
             <tbody>
               {grouped.map((g, i) => (
-                <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
-                  <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
+                <tr
+                  key={g.key + i}
+                  className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60"
+                >
+                  <td className="py-2 pr-4">
+                    <StatusBadge s={g.status} />
+                  </td>
                   <td className="py-2 pr-4">
                     <div className="font-semibold text-slate-800">{g.product}</div>
                     {mode === "ad" && (
-                      <div className="text-[11px] text-slate-500">{g.campaign} • {g.rows[0]?.channel}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {g.campaign} • {g.rows[0]?.channel}
+                      </div>
                     )}
                   </td>
-                  {mode === "ad" && <td className="py-2 pr-4 text-slate-700">{g.ad}</td>}
-                  <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
-                  <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
-                  <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
+                  {mode === "ad" && (
+                    <td className="py-2 pr-4 text-slate-700">{g.ad}</td>
+                  )}
+                  <td className="py-2 pr-4 font-medium">
+                    {formatCurrency(g.spend)}
+                  </td>
+                  <td className="py-2 pr-4 font-medium">
+                    {formatCurrency(g.revenue)}
+                  </td>
+                  <td
+                    className={`py-2 pr-4 font-semibold ${
+                      g.roas != null && g.roas >= roasScale
+                        ? "text-emerald-600"
+                        : g.roas != null && g.roas < roasKill
+                        ? "text-rose-600"
+                        : "text-slate-700"
+                    }`}
+                  >
+                    {g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}
+                  </td>
                   <td className="py-2 pr-4">{formatCurrency(g.cpc)}</td>
                   <td className="py-2 pr-4">{formatCurrency(g.cpl)}</td>
                   <td className="py-2 pr-4">{formatCurrency(g.cpa)}</td>
@@ -834,7 +1105,9 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
               ))}
               {grouped.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="py-10 text-center text-slate-500">No rows match your filters.</td>
+                  <td colSpan={14} className="py-10 text-center text-slate-500">
+                    No rows match your filters.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -847,7 +1120,11 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
         <div className="flex items-center gap-2">
           <DollarSign className="h-3.5 w-3.5" />
           <span>
-            <span className="font-semibold">CPC</span> = Spend / Clicks; <span className="font-semibold">CPL</span> = Spend / Leads; <span className="font-semibold">CPA</span> = Spend / Purchases; <span className="font-semibold">CPCB</span> = Spend / Checkouts; <span className="font-semibold">ROAS</span> = Revenue / Spend.
+            <span className="font-semibold">CPC</span> = Spend / Clicks;{" "}
+            <span className="font-semibold">CPL</span> = Spend / Leads;{" "}
+            <span className="font-semibold">CPA</span> = Spend / Purchases;{" "}
+            <span className="font-semibold">CPCB</span> = Spend / Checkouts;{" "}
+            <span className="font-semibold">ROAS</span> = Revenue / Spend.
           </span>
         </div>
         <div className="opacity-80">© {new Date().getFullYear()} Viral Ad Media, LLC</div>
