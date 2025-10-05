@@ -552,7 +552,7 @@ async function handleSync(fromDate: string, toDate: string, level: "ad" | "campa
     setSyncLoading(true);
 
     // First try the explicit range (if both provided)
-    let params = new URLSearchParams({ level });
+    const params = new URLSearchParams({ level });
     if (fromDate && toDate) {
       params.set("from", fromDate);
       params.set("to", toDate);
