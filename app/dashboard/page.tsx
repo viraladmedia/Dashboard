@@ -610,7 +610,7 @@ export default function FinancialDashboard() {
       setSyncLoading(true);
 
       // Prefer explicit range if both provided, else use last_30d
-      let params = new URLSearchParams({ level });
+      const params = new URLSearchParams({ level });
       if (fromDate && toDate) {
         params.set("from", fromDate);
         params.set("to", toDate);
