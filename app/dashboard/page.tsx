@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   ArrowUpRight,
   DollarSign,
   Download,
-  Filter,
   LineChart as LineChartIcon,
   Rocket,
   Search,
@@ -51,8 +49,11 @@ import Papa from "papaparse";
 
 /**
  * Viral Ad Media — Financial Dashboard (API-first)
- * - Loads last 30 days from /api/import/merge on mount (no seed data)
- * - CSV import/export still available
+ * - Loads last 30 days from /api/import/merge on mount
+ * - CSV import/export available
+ * - Group By removed; default views:
+ *   • Ad-Level Performance (now with explicit Product & Campaign columns)
+ *   • Campaign-Level Performance (aggregated)
  */
 
 type Row = {
@@ -170,7 +171,6 @@ export default function FinancialDashboard() {
   const [roasScale, setRoasScale] = React.useState<number>(3.0);
   const [cpaKill, setCpaKill] = React.useState<number | "">("");
   const [cpaGood, setCpaGood] = React.useState<number | "">("");
-  const [mode, setMode] = React.useState<"ad" | "product">("ad");
 
   // API Sync controls (defaults)
   const today = new Date();
@@ -210,18 +210,50 @@ export default function FinancialDashboard() {
 
   const totals = React.useMemo(() => aggregate(filtered), [filtered]);
 
-  const grouped = React.useMemo(() => {
-    const keyFn = (r: Row) => (mode === "ad" ? `${r.product} | ${r.ad}` : r.product);
+  // --- Ad-level grouping (explicit Product & Campaign columns) ---
+  const groupedAd = React.useMemo(() => {
+    const keyFn = (r: Row) => `${r.product} | ${r.campaign} | ${r.ad}`;
     const groups = by(filtered, keyFn);
     const out = Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
-      const [prod, ad] = mode === "ad" ? k.split(" | ") : [k, ""];
-      return { key: k, product: prod, ad: ad || undefined, channel: arr[0].channel, campaign: arr[0].campaign, rows: arr, ...agg, status: statusFor(agg, thresholds) };
+      const [prod, camp, ad] = k.split(" | ");
+      return {
+        key: k,
+        product: prod,
+        campaign: camp,
+        ad,
+        channel: arr[0].channel,
+        rows: arr,
+        ...agg,
+        status: statusFor(agg, thresholds),
+      };
     });
     const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
     return out.sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
-  }, [filtered, thresholds, mode]);
+  }, [filtered, thresholds]);
 
+  // --- Campaign-level grouping (aggregated) ---
+  const groupedCampaign = React.useMemo(() => {
+    const keyFn = (r: Row) => `${r.product} | ${r.campaign}`;
+    const groups = by(filtered, keyFn);
+    const out = Array.from(groups.entries()).map(([k, arr]) => {
+      const agg = aggregate(arr);
+      const [prod, camp] = k.split(" | ");
+      return {
+        key: k,
+        product: prod,
+        campaign: camp,
+        channel: arr[0].channel, // first channel in group (mixed channels still aggregate)
+        rows: arr,
+        ...agg,
+        status: statusFor(agg, thresholds),
+      };
+    });
+    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
+    return out.sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
+  }, [filtered, thresholds]);
+
+  // Charts
   const roasByProduct = React.useMemo(() => {
     const groups = by(filtered, (r) => r.product);
     return Array.from(groups.entries()).map(([product, arr]) => {
@@ -240,18 +272,24 @@ export default function FinancialDashboard() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filtered]);
 
-  const roasVsCpa = React.useMemo(() => grouped.map((g) => ({
-    name: mode === "ad" ? `${g.product}: ${g.ad}` : g.product,
+  const roasVsCpa = React.useMemo(() => groupedAd.map((g) => ({
+    name: `${g.product}: ${g.ad}`,
     roas: g.roas ?? 0,
     cpa: g.cpa ?? 0,
     spend: g.spend,
-  })), [grouped, mode]);
+  })), [groupedAd]);
 
-  function exportFilteredCSV() {
-    const header = ["product", ...(mode === "ad" ? ["ad"] : []), "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
-    const rowsCsv = grouped.map((g) => [g.product, ...(mode === "ad" ? [g.ad ?? ""] : []), g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
+  function exportFilteredCSVAd() {
+    const header = ["product", "campaign", "ad", "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
+    const rowsCsv = groupedAd.map((g) => [g.product, g.campaign, g.ad ?? "", g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
     const csv = Papa.unparse([header, ...rowsCsv]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-${mode}-report.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-ad-report.csv`; a.click(); URL.revokeObjectURL(url);
+  }
+  function exportFilteredCSVCampaign() {
+    const header = ["product", "campaign", "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
+    const rowsCsv = groupedCampaign.map((g) => [g.product, g.campaign, g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
+    const csv = Papa.unparse([header, ...rowsCsv]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-campaign-report.csv`; a.click(); URL.revokeObjectURL(url);
   }
   function downloadTemplate() {
     const header = ["date","channel","campaign","product","ad","impressions","clicks","leads","checkouts","purchases","ad_spend","revenue"];
@@ -305,7 +343,7 @@ export default function FinancialDashboard() {
           res = await fetch(`/api/import/merge?${retry.toString()}`);
           if (res.ok) data = await res.json();
         }
-        if (!Array.isArray(data) || data.length === 0) { /* keep empty; show message in UI */ return; }
+        if (!Array.isArray(data) || data.length === 0) { return; }
         setRows(data as Row[]);
       } catch (err: unknown) {
         alert(`Sync failed: ${(err as Error).message}`);
@@ -315,7 +353,7 @@ export default function FinancialDashboard() {
   );
 
   // Load last 30 days on mount
-  React.useEffect(() => { handleSync("", "", syncLevel); }, [handleSync, syncLevel]);
+  React.useEffect(() => { handleSync("", "", "ad"); }, [handleSync]);
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-violet-50 to-cyan-50">
@@ -323,7 +361,7 @@ export default function FinancialDashboard() {
         <GradientHeader />
 
         {/* Controls */}
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 mb-6">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
           {/* Search / Filters / Actions */}
           <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
             <CardContent className="p-4">
@@ -364,7 +402,8 @@ export default function FinancialDashboard() {
                 <div className="flex flex-wrap items-center gap-2 ml-auto w-full sm:w-auto">
                   <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap shrink-0"><Upload className="h-4 w-4" />Import CSV</Button>
                   <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Template</Button>
-                  <Button onClick={exportFilteredCSV} className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Export</Button>
+                  <Button onClick={exportFilteredCSVAd} className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Export Ads</Button>
+                  <Button onClick={exportFilteredCSVCampaign} variant="outline" className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Export Campaigns</Button>
                   <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
                 </div>
               </div>
@@ -393,22 +432,6 @@ export default function FinancialDashboard() {
                   <Input type="number" step="0.01" value={cpaGood} onChange={(e) => setCpaGood(e.target.value === "" ? "" : Number(e.target.value))} />
                 </div>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Group By */}
-          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2 text-slate-600"><Filter className="h-4 w-4" /><span className="text-sm font-medium">Group By</span></div>
-              <Tabs value={mode} onValueChange={(v) => setMode(v as "ad" | "product")}>
-                <TabsList className="grid grid-cols-2 w-full whitespace-nowrap">
-                  <TabsTrigger value="ad" className="truncate">Ad (Creative)</TabsTrigger>
-                  <TabsTrigger value="product" className="truncate">Product / Funnel</TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <p className="text-xs text-slate-500 mt-2 break-words">
-                Use <span className="font-semibold">Ad</span> to spot winning/losing creatives; <span className="font-semibold">Product</span> for funnel-level decisions.
-              </p>
             </CardContent>
           </Card>
 
@@ -504,47 +527,46 @@ export default function FinancialDashboard() {
                   <XAxis type="number" dataKey="roas" name="ROAS" tickFormatter={(v: number) => `${v.toFixed(1)}x`} />
                   <YAxis type="number" dataKey="cpa" name="CPA" tickFormatter={(v: number) => `$${v.toFixed(0)}`} />
                   <Tooltip formatter={(v: unknown, n: string) => n === "roas" ? `${Number(v as number).toFixed(2)}x` : formatCurrency(Number(v as number))} cursor={{ strokeDasharray: "3 3" }} />
-                  <Scatter data={roasVsCpa} name={mode === "ad" ? "Ads" : "Products"} />
+                  <Scatter data={roasVsCpa} name="Ads" />
                 </ScatterChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>
 
-        {/* Table */}
-        <Card className="rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
+        {/* Campaign-Level Performance Table */}
+        <Card className="mt-6 mb-6 rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-slate-700">{mode === "ad" ? "Ad-Level Performance" : "Product/Funnel Performance"}</CardTitle>
+            <CardTitle className="text-sm font-semibold text-slate-700">Campaign-Level Performance</CardTitle>
             <div className="md:hidden flex items-center gap-2">
-              <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap"><Upload className="h-4 w-4" />Import CSV</Button>
-              <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Template</Button>
-              <Button onClick={exportFilteredCSV} className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Export</Button>
-              <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
+              <Button onClick={exportFilteredCSVCampaign} className="gap-2 whitespace-nowrap">
+                <Download className="h-4 w-4" />Export Campaigns
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="pt-0 overflow-x-auto">
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col className="w-[110px]" />
-                <col />
-                {mode === "ad" && <col className="w-[220px]" />}
-                <col className="w-[120px]" />
-                <col className="w-[120px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[90px]" />
-                <col className="w-[80px]" />
-                <col className="w-[80px]" />
-                <col className="w-[90px]" />
-                <col className="w-[100px]" />
+                <col className="w-[110px]" /> {/* status */}
+                <col className="w-[200px]" /> {/* product */}
+                <col />                      {/* campaign */}
+                <col className="w-[110px]" /> {/* spend */}
+                <col className="w-[120px]" /> {/* revenue */}
+                <col className="w-[80px]" />  {/* roas */}
+                <col className="w-[90px]" />  {/* cpc */}
+                <col className="w-[90px]" />  {/* cpl */}
+                <col className="w-[90px]" />  {/* cpa */}
+                <col className="w-[90px]" />  {/* cpcb */}
+                <col className="w-[80px]" />  {/* clicks */}
+                <col className="w-[80px]" />  {/* leads */}
+                <col className="w-[90px]" />  {/* checkouts */}
+                <col className="w-[100px]" /> {/* purchases */}
               </colgroup>
               <thead>
                 <tr className="text-left text-slate-600 border-b">
                   <th className="py-2 pr-4">Status</th>
                   <th className="py-2 pr-4">Product</th>
-                  {mode === "ad" && <th className="py-2 pr-4">Ad</th>}
+                  <th className="py-2 pr-4">Campaign</th>
                   <th className="py-2 pr-4">Spend</th>
                   <th className="py-2 pr-4">Revenue</th>
                   <th className="py-2 pr-4">ROAS</th>
@@ -559,14 +581,14 @@ export default function FinancialDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {grouped.map((g, i) => (
+                {groupedCampaign.map((g, i) => (
                   <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
                     <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
                     <td className="py-2 pr-4">
-                      <div className="font-semibold text-slate-800 truncate max-w-[260px]">{g.product}</div>
-                      {mode === "ad" && <div className="text-[11px] text-slate-500 truncate max-w-[260px]">{g.campaign} • {g.rows[0]?.channel}</div>}
+                      <div className="font-semibold text-slate-800 truncate">{g.product}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
                     </td>
-                    {mode === "ad" && <td className="py-2 pr-4 text-slate-700 truncate max-w-[220px]">{g.ad}</td>}
+                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
                     <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
@@ -580,10 +602,94 @@ export default function FinancialDashboard() {
                     <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
                   </tr>
                 ))}
-                {grouped.length === 0 && (
+                {groupedCampaign.length === 0 && (
                   <tr>
                     <td colSpan={14} className="py-10 text-center text-slate-500">
-                      {syncLoading ? "Loading last 30 days…" : "No data yet. Use Sync to load from your ad platforms or import a CSV."}
+                      {syncLoading ? "Loading last 30 days…" : "No campaign-level data yet."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        {/* Ad-Level Performance Table (now with Product & Campaign columns) */}
+        <Card className="rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700">Ad-Level Performance</CardTitle>
+            <div className="md:hidden flex items-center gap-2">
+              <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap"><Upload className="h-4 w-4" />Import CSV</Button>
+              <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Template</Button>
+              <Button onClick={exportFilteredCSVAd} className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Export Ads</Button>
+              <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 overflow-x-auto">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-[110px]" /> {/* status */}
+                <col className="w-[170px]" /> {/* product */}
+                <col className="w-[220px]" /> {/* campaign */}
+                <col className="w-[220px]" /> {/* ad */}
+                <col className="w-[110px]" /> {/* spend */}
+                <col className="w-[120px]" /> {/* revenue */}
+                <col className="w-[80px]" />  {/* roas */}
+                <col className="w-[90px]" />  {/* cpc */}
+                <col className="w-[90px]" />  {/* cpl */}
+                <col className="w-[90px]" />  {/* cpa */}
+                <col className="w-[90px]" />  {/* cpcb */}
+                <col className="w-[80px]" />  {/* clicks */}
+                <col className="w-[80px]" />  {/* leads */}
+                <col className="w-[90px]" />  {/* checkouts */}
+                <col className="w-[100px]" /> {/* purchases */}
+              </colgroup>
+              <thead>
+                <tr className="text-left text-slate-600 border-b">
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Product</th>
+                  <th className="py-2 pr-4">Campaign</th>
+                  <th className="py-2 pr-4">Ad</th>
+                  <th className="py-2 pr-4">Spend</th>
+                  <th className="py-2 pr-4">Revenue</th>
+                  <th className="py-2 pr-4">ROAS</th>
+                  <th className="py-2 pr-4">CPC</th>
+                  <th className="py-2 pr-4">CPL</th>
+                  <th className="py-2 pr-4">CPA</th>
+                  <th className="py-2 pr-4">CPCB</th>
+                  <th className="py-2 pr-4">Clicks</th>
+                  <th className="py-2 pr-4">Leads</th>
+                  <th className="py-2 pr-4">Checkouts</th>
+                  <th className="py-2 pr-4">Purchases</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedAd.map((g, i) => (
+                  <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
+                    <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
+                    <td className="py-2 pr-4">
+                      <div className="font-semibold text-slate-800 truncate">{g.product}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{g.rows[0]?.channel}</div>
+                    </td>
+                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 text-slate-700 truncate">{g.ad}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
+                    <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpc)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpl)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpa)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpcb)}</td>
+                    <td className="py-2 pr-4">{fmt(g.clicks, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.leads, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.checkouts, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
+                  </tr>
+                ))}
+                {groupedAd.length === 0 && (
+                  <tr>
+                    <td colSpan={15} className="py-10 text-center text-slate-500">
+                      {syncLoading ? "Loading last 30 days…" : "No ad-level data yet."}
                     </td>
                   </tr>
                 )}
