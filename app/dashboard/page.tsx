@@ -94,7 +94,7 @@ function useCSVImporter(setRows: (r: Row[]) => void) {
         const parsed = (res.data as unknown[]).map((r: any) => ({
           date: String(r.date ?? r.Date ?? r.DATE ?? ""),
           channel: String(r.channel ?? r.Channel ?? r.CHANNEL ?? ""),
-          campaign: String(r.campaign ?? r.Campaign ?? r.CAMPAIGN ?? ""),
+          campaign: String(r.campaign ?? r.Campaign ?? r.CAMPAIGN ?? "(no campaign)"),
           product: String(r.product ?? r.Product ?? r.PRODUCT ?? ""),
           ad: String(r.ad ?? r.Ad ?? r.AD ?? r.creative ?? ""),
           adset: String(r.adset ?? r.ad_set ?? r["ad set"] ?? r.adset_name ?? r.Adset ?? r.AdSet ?? "") || null,
@@ -218,13 +218,13 @@ export default function FinancialDashboard() {
 
   // Groupings
   const groupedAd = React.useMemo(() => {
-    const groups = by(filtered, (r) => `${r.product} | ${r.campaign} | ${r.ad}`);
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign || "(no campaign)"} | ${r.ad}`);
     const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
     return Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
       const [prod, camp, ad] = k.split(" | ");
       return {
-        key: k, product: prod, campaign: camp, ad,
+        key: k, product: prod, campaign: camp || "(no campaign)", ad,
         channel: arr[0].channel, rows: arr,
         ...agg, status: statusFor(agg, thresholds),
       };
@@ -232,13 +232,13 @@ export default function FinancialDashboard() {
   }, [filtered, thresholds]);
 
   const groupedAdset = React.useMemo(() => {
-    const groups = by(filtered, (r) => `${r.product} | ${r.campaign} | ${r.adset ?? "(no ad set)"}`);
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign || "(no campaign)"} | ${r.adset ?? "(no ad set)"}`);
     const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
     return Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
       const [prod, camp, adset] = k.split(" | ");
       return {
-        key: k, product: prod, campaign: camp, adset,
+        key: k, product: prod, campaign: camp || "(no campaign)", adset,
         channel: arr[0].channel, rows: arr,
         ...agg, status: statusFor(agg, thresholds),
       };
@@ -246,11 +246,12 @@ export default function FinancialDashboard() {
   }, [filtered, thresholds]);
 
   const groupedCampaign = React.useMemo(() => {
-    const groups = by(filtered, (r) => `${r.product} | ${r.campaign}`);
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign || "(no campaign)"}`);
     const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
     return Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
-      const [prod, camp] = k.split(" | ");
+      const [prod, campRaw] = k.split(" | ");
+      const camp = campRaw || arr[0]?.campaign || "(no campaign)";
       return {
         key: k, product: prod, campaign: camp,
         channel: arr[0].channel, rows: arr,
@@ -282,17 +283,33 @@ export default function FinancialDashboard() {
     name: `${g.product}: ${g.ad}`, roas: g.roas ?? 0, cpa: g.cpa ?? 0, spend: g.spend,
   })), [groupedAd]);
 
-  // CSV helpers (only keep Campaign export since others were removed)
+  // CSV export (Campaign level)
   function exportFilteredCSVCampaign() {
     const header = ["product", "campaign", "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
-    const rowsCsv = groupedCampaign.map((g) => [g.product, g.campaign, g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
-    const csv = Papa.unparse([header, ...rowsCsv]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-campaign-report.csv`; a.click(); URL.revokeObjectURL(url);
-  }
-  function downloadTemplate() {
-    const header = ["date","channel","campaign","product","ad","adset","impressions","clicks","leads","checkouts","purchases","ad_spend","revenue","account_id","account_name"];
-    const csv = Papa.unparse([header]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "viral-ad-media-template.csv"; a.click(); URL.revokeObjectURL(url);
+    const rowsCsv = groupedCampaign.map((g) => [
+      g.product,
+      g.campaign || "(no campaign)",
+      g.spend,
+      g.revenue,
+      g.roas ?? "",
+      g.clicks,
+      g.leads,
+      g.checkouts,
+      g.purchases,
+      g.cpc ?? "",
+      g.cpl ?? "",
+      g.cpa ?? "",
+      g.cpcb ?? "",
+      g.status,
+    ]);
+    const csv = Papa.unparse([header, ...rowsCsv]);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `viral-ad-media-export.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function StatusBadge({ s }: { s: ReturnType<typeof statusFor> }) {
@@ -373,14 +390,14 @@ export default function FinancialDashboard() {
           <GradientHeader />
         </div>
 
-        {/* Row: Filters (lighter), Actions & Thresholds (new), Sync */}
-        <div className="grid gap-4 lg:grid-cols-3 mb-6">
-          {/* Filters */}
-          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden lg:col-span-2">
+        {/* Three equal columns: Filters / Actions & Thresholds / Sync */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+          {/* Filters (no longer spanning 2 columns) */}
+          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
             <CardContent className="p-4">
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-3">
                 {/* Search */}
-                <div className="relative flex-1 min-w-[220px]">
+                <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input
                     value={query}
@@ -399,90 +416,95 @@ export default function FinancialDashboard() {
                   )}
                 </div>
 
-                {/* Account */}
-                <Select value={account} onValueChange={setAccount}>
-                  <SelectTrigger className="w-52">
-                    <SelectValue placeholder={`All Accounts (${accountCount})`}>
-                      {account === "all"
-                        ? `All Accounts (${accountCount})`
-                        : (accountOptions.find(a => a.value === account)?.label ?? account)}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{`All Accounts (${accountCount})`}</SelectItem>
-                    {accountOptions.map((a) => (
-                      <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Selectors stacked nicely for a narrow column */}
+                <div className="grid grid-cols-1 gap-2">
+                  <Select value={account} onValueChange={setAccount}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={`All Accounts (${accountCount})`}>
+                        {account === "all"
+                          ? `All Accounts (${accountCount})`
+                          : (accountOptions.find(a => a.value === account)?.label ?? account)}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{`All Accounts (${accountCount})`}</SelectItem>
+                      {accountOptions.map((a) => (
+                        <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
-                {/* Channel */}
-                <Select value={channel} onValueChange={setChannel}>
-                  <SelectTrigger className="w-44">
-                    <SelectValue placeholder={`All Channels (${channelCount})`}>
-                      {channel === "all" ? `All Channels (${channelCount})` : channel}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{`All Channels (${channelCount})`}</SelectItem>
-                    {allChannels.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                  <Select value={channel} onValueChange={setChannel}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={`All Channels (${channelCount})`}>
+                        {channel === "all" ? `All Channels (${channelCount})` : channel}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{`All Channels (${channelCount})`}</SelectItem>
+                      {allChannels.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
 
-                {/* Product */}
-                <Select value={product} onValueChange={setProduct}>
-                  <SelectTrigger className="w-52">
-                    <SelectValue placeholder={`All Products (${productCount})`}>
-                      {product === "all" ? `All Products (${productCount})` : product}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{`All Products (${productCount})`}</SelectItem>
-                    {allProducts.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Active filters */}
-              {hasActiveFilters && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {query.trim() && (
-                    <Badge variant="outline" className="gap-1 bg-slate-50">
-                      Search: “{query.trim()}”
-                      <button onClick={() => resetFilter("query")} className="ml-1 opacity-70 hover:opacity-100">
-                        <XIcon className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {account !== "all" && (
-                    <Badge variant="outline" className="gap-1 bg-slate-50">
-                      Account: {accountOptions.find(a => a.value === account)?.label ?? account}
-                      <button onClick={() => resetFilter("account")} className="ml-1 opacity-70 hover:opacity-100">
-                        <XIcon className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {channel !== "all" && (
-                    <Badge variant="outline" className="gap-1 bg-slate-50">
-                      Channel: {channel}
-                      <button onClick={() => resetFilter("channel")} className="ml-1 opacity-70 hover:opacity-100">
-                        <XIcon className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  {product !== "all" && (
-                    <Badge variant="outline" className="gap-1 bg-slate-50">
-                      Product: {product}
-                      <button onClick={() => resetFilter("product")} className="ml-1 opacity-70 hover:opacity-100">
-                        <XIcon className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  )}
-                  <Button variant="outline" size="sm" onClick={() => { setQuery(""); setAccount("all"); setChannel("all"); setProduct("all"); }} className="ml-auto">
-                    Reset All
-                  </Button>
+                  <Select value={product} onValueChange={setProduct}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={`All Products (${productCount})`}>
+                        {product === "all" ? `All Products (${productCount})` : product}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{`All Products (${productCount})`}</SelectItem>
+                      {allProducts.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
-              )}
+
+                {/* Active filters */}
+                {hasActiveFilters && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {query.trim() && (
+                      <Badge variant="outline" className="gap-1 bg-slate-50">
+                        Search: “{query.trim()}”
+                        <button onClick={() => resetFilter("query")} className="ml-1 opacity-70 hover:opacity-100">
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {account !== "all" && (
+                      <Badge variant="outline" className="gap-1 bg-slate-50">
+                        Account: {accountOptions.find(a => a.value === account)?.label ?? account}
+                        <button onClick={() => resetFilter("account")} className="ml-1 opacity-70 hover:opacity-100">
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {channel !== "all" && (
+                      <Badge variant="outline" className="gap-1 bg-slate-50">
+                        Channel: {channel}
+                        <button onClick={() => resetFilter("channel")} className="ml-1 opacity-70 hover:opacity-100">
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {product !== "all" && (
+                      <Badge variant="outline" className="gap-1 bg-slate-50">
+                        Product: {product}
+                        <button onClick={() => resetFilter("product")} className="ml-1 opacity-70 hover:opacity-100">
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setQuery(""); setAccount("all"); setChannel("all"); setProduct("all"); }}
+                      className="ml-auto"
+                    >
+                      Reset All
+                    </Button>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
@@ -496,58 +518,69 @@ export default function FinancialDashboard() {
             <CardContent className="pt-0">
               <div className="grid gap-3">
                 {/* Thresholds row */}
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500">Min Spend</span>
-                    <div className="w-36"><Slider value={[minSpend]} min={0} max={5000} step={50} onValueChange={(v) => setMinSpend(v[0])} /></div>
+                    <div className="w-full"><Slider value={[minSpend]} min={0} max={5000} step={50} onValueChange={(v) => setMinSpend(v[0])} /></div>
                     <Badge variant="outline" className="bg-emerald-50 border-emerald-200 text-emerald-700">{formatCurrency(minSpend)}</Badge>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-500">Min Clicks</span>
-                    <div className="w-36"><Slider value={[minClicks]} min={0} max={2000} step={10} onValueChange={(v) => setMinClicks(v[0])} /></div>
+                    <div className="w-full"><Slider value={[minClicks]} min={0} max={2000} step={10} onValueChange={(v) => setMinClicks(v[0])} /></div>
                     <Badge variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">{fmt(minClicks, 0)}</Badge>
                   </div>
                 </div>
 
-                {/* Import / Template (Export Campaigns only) */}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap"><Upload className="h-4 w-4" />Import CSV</Button>
-                  <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Template</Button>
-                  <Button onClick={exportFilteredCSVCampaign} variant="outline" className="gap-2 whitespace-nowrap col-span-2"><Download className="h-4 w-4" />Export Campaigns</Button>
+                {/* Import / Export */}
+                <div className="grid grid-cols-1 gap-2">
+                  <Button onClick={onPick} variant="secondary" className="gap-2 w-full whitespace-nowrap">
+                    <Upload className="h-4 w-4" />Import CSV
+                  </Button>
+                  <Button onClick={exportFilteredCSVCampaign} variant="outline" className="gap-2 w-full whitespace-nowrap">
+                    <Download className="h-4 w-4" />Export
+                  </Button>
                 </div>
                 <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
               </div>
             </CardContent>
           </Card>
 
-          {/* Sync */}
-          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden lg:col-span-3">
+          {/* Sync (now sized for a narrow column) */}
+          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
             <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2 text-slate-600"><CalendarIcon className="h-4 w-4" /><span className="text-sm font-medium">Sync from APIs</span></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="md:col-span-1">
+              <div className="flex items-center gap-2 mb-3 text-slate-600">
+                <CalendarIcon className="h-4 w-4" />
+                <span className="text-sm font-medium">Sync from APIs</span>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <div>
                   <label className="text-xs text-slate-500">From</label>
                   <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
                 </div>
-                <div className="md:col-span-1">
+                <div>
                   <label className="text-xs text-slate-500">To</label>
                   <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
                 </div>
-                <div className="md:col-span-1">
+                <div>
                   <label className="text-xs text-slate-500">Level</label>
                   <Select value={syncLevel} onValueChange={(v) => setSyncLevel(v as "ad" | "campaign")}>
-                    <SelectTrigger><SelectValue placeholder="Level">{syncLevel === "ad" ? "Ad" : "Campaign"}</SelectValue></SelectTrigger>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Level">{syncLevel === "ad" ? "Ad" : "Campaign"}</SelectValue>
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ad">Ad</SelectItem>
                       <SelectItem value="campaign">Campaign</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-2 flex items-end gap-2">
-                  <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel, account)} className="gap-2 whitespace-nowrap shrink-0">
+                <div className="flex">
+                  <Button
+                    disabled={syncLoading}
+                    onClick={() => handleSync(from, to, syncLevel, account)}
+                    className="gap-2 w-full whitespace-nowrap"
+                  >
                     <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"}
                   </Button>
-                  {/* Removed: Sync (Last 30 Days) */}
                 </div>
               </div>
             </CardContent>
@@ -668,7 +701,7 @@ export default function FinancialDashboard() {
                       <div className="font-semibold text-slate-800 truncate">{g.product}</div>
                       <div className="text-[11px] text-slate-500 truncate">{g.rows[0]?.channel}</div>
                     </td>
-                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 truncate">{g.campaign || "(no campaign)"}</td>
                     <td className="py-2 pr-4 text-slate-700 truncate">{g.ad}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
@@ -742,7 +775,7 @@ export default function FinancialDashboard() {
                       <div className="font-semibold text-slate-800 truncate">{g.product}</div>
                       <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
                     </td>
-                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 truncate">{g.campaign || "(no campaign)"}</td>
                     <td className="py-2 pr-4 text-slate-700 truncate">{g.adset}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
@@ -805,7 +838,7 @@ export default function FinancialDashboard() {
                       <div className="font-semibold text-slate-800 truncate">{g.product}</div>
                       <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
                     </td>
-                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 truncate">{g.campaign || "(no campaign)"}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
                     <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
                     <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
