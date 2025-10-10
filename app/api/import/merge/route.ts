@@ -21,6 +21,9 @@ export async function GET(req: NextRequest) {
   const datePreset = searchParams.get("date_preset") || ""; // e.g., "last_30d"
 
   const base = getBaseUrl(req);
+  
+// NEW: optional account key (id or name—whatever your source expects)
+  const account = searchParams.get("account") || undefined;
 
   // Build downstream query string
   const qs = new URLSearchParams({ level });

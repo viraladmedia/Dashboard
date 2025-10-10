@@ -1,74 +1,44 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */ 
 // File: app/dashboard/page.tsx
 "use client";
 
 import React from "react";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import {
-  ArrowDownRight,
-  ArrowUpRight,
-  DollarSign,
-  Download,
-  LineChart as LineChartIcon,
-  Rocket,
-  Search,
-  Settings2,
-  Trash2,
-  Upload,
-  Calendar as CalendarIcon,
+  ArrowDownRight, ArrowUpRight, DollarSign, Download, LineChart as LineChartIcon,
+  Rocket, Search, Settings2, Trash2, Upload, Calendar as CalendarIcon, X as XIcon,
 } from "lucide-react";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
+  Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer,
+  Scatter, ScatterChart, Tooltip, XAxis, YAxis,
 } from "recharts";
 import Papa from "papaparse";
 
-/**
- * Viral Ad Media — Financial Dashboard (API-first)
- * - Loads last 30 days from /api/import/merge on mount
- * - CSV import/export available
- * - Group By removed; default views:
- *   • Ad-Level Performance (now with explicit Product & Campaign columns)
- *   • Campaign-Level Performance (aggregated)
- */
-
+/** Row supports account & adset metadata populated by APIs */
 type Row = {
-  date: string;       // YYYY-MM-DD
-  channel: string;    // Meta, Google, TikTok, etc.
+  date: string;
+  channel: string;
   campaign: string;
-  product: string;    // funnel/product
-  ad: string;         // creative/ad name
+  product: string;
+  ad: string;
+  adset?: string | null;
   impressions: number;
   clicks: number;
   leads: number;
-  checkouts: number;  // checkout begun
+  checkouts: number;
   purchases: number;
   ad_spend: number;
   revenue: number;
+  account_id?: string | null;
+  account_name?: string | null;
 };
 
 function safeDiv(n: number, d: number) { return !d ? null : n / d; }
@@ -81,7 +51,8 @@ function fmt(n: number | null | undefined, digits = 2) {
   return Number(n.toFixed(digits)).toLocaleString();
 }
 function by<T extends Record<string, unknown>>(arr: T[], key: (t: T) => string) {
-  const map = new Map<string, T[]>(); for (const it of arr) { const k = key(it); if (!map.has(k)) map.set(k, []); map.get(k)!.push(it); }
+  const map = new Map<string, T[]>();
+  for (const it of arr) { const k = key(it); if (!map.has(k)) map.set(k, []); map.get(k)!.push(it); }
   return map;
 }
 function aggregate(rows: Row[]) {
@@ -92,10 +63,17 @@ function aggregate(rows: Row[]) {
   const checkouts = rows.reduce((s, r) => s + r.checkouts, 0);
   const purchases = rows.reduce((s, r) => s + r.purchases, 0);
   const impressions = rows.reduce((s, r) => s + r.impressions, 0);
-  return { spend, revenue, clicks, leads, checkouts, purchases, impressions,
-    cpc: safeDiv(spend, clicks), cpl: safeDiv(spend, leads), cpa: safeDiv(spend, purchases),
-    cpcb: safeDiv(spend, checkouts), roas: safeDiv(revenue, spend) };
+  return {
+    spend, revenue, clicks, leads, checkouts, purchases, impressions,
+    cpc: safeDiv(spend, clicks), cpl: safeDiv(spend, leads),
+    cpa: safeDiv(spend, purchases), cpcb: safeDiv(spend, checkouts),
+    roas: safeDiv(revenue, spend),
+  };
 }
+type Thresholds = {
+  minSpend: number; minClicks: number; roasKill: number; roasScale: number;
+  cpaKill: number | null; cpaGood: number | null;
+};
 function statusFor(agg: ReturnType<typeof aggregate>, cfg: Thresholds) {
   const { minSpend, minClicks, roasKill, roasScale, cpaKill, cpaGood } = cfg;
   const meetsVolume = agg.spend >= minSpend && agg.clicks >= minClicks;
@@ -103,7 +81,6 @@ function statusFor(agg: ReturnType<typeof aggregate>, cfg: Thresholds) {
   if ((agg.roas != null && agg.roas >= roasScale) || (cpaGood != null && agg.cpa != null && agg.cpa <= cpaGood)) return "Scale" as const;
   return "Optimize" as const;
 }
-type Thresholds = { minSpend: number; minClicks: number; roasKill: number; roasScale: number; cpaKill: number | null; cpaGood: number | null; };
 
 function useCSVImporter(setRows: (r: Row[]) => void) {
   const inputRef = React.useRef<HTMLInputElement | null>(null);
@@ -119,6 +96,7 @@ function useCSVImporter(setRows: (r: Row[]) => void) {
           campaign: String(r.campaign ?? r.Campaign ?? r.CAMPAIGN ?? ""),
           product: String(r.product ?? r.Product ?? r.PRODUCT ?? ""),
           ad: String(r.ad ?? r.Ad ?? r.AD ?? r.creative ?? ""),
+          adset: String(r.adset ?? r.ad_set ?? r["ad set"] ?? r.adset_name ?? r.Adset ?? r.AdSet ?? "") || null,
           impressions: Number(r.impressions ?? r.Impressions ?? r.IMPR ?? r.impr ?? 0),
           clicks: Number(r.clicks ?? r.Clicks ?? r.CLICKS ?? 0),
           leads: Number(r.leads ?? r.Leads ?? r.LEADS ?? 0),
@@ -126,6 +104,8 @@ function useCSVImporter(setRows: (r: Row[]) => void) {
           purchases: Number(r.purchases ?? r.Purchases ?? r.Sales ?? r.orders ?? 0),
           ad_spend: Number(r.ad_spend ?? r.spend ?? r.Spend ?? r.cost ?? 0),
           revenue: Number(r.revenue ?? r.Revenue ?? r.rev ?? 0),
+          account_id: String(r.account_id ?? r.AccountId ?? r.account ?? "") || null,
+          account_name: String(r.account_name ?? r.AccountName ?? "") || null,
         })) as Row[];
         setRows(parsed);
       },
@@ -142,11 +122,9 @@ function GradientHeader() {
       <div className="relative flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <div className="text-xs uppercase tracking-widest/relaxed opacity-90">Viral Ad Media, LLC</div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mt-1 leading-tight break-words">
-            Financial & Performance Dashboard
-          </h1>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mt-1 leading-tight break-words">Financial & Performance Dashboard</h1>
           <p className="opacity-95 mt-1 text-sm md:text-base leading-snug break-words">
-            Track Sales & Ad Spend • CPC • CPL • CPA • CPCB • ROAS — per funnel/product and ad.
+            Track Sales & Ad Spend • CPC • CPL • CPA • CPCB • ROAS — per funnel/product, adset, and ad.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,11 +138,13 @@ function GradientHeader() {
 function yyyymmdd(d: Date) { return d.toISOString().slice(0, 10); }
 
 export default function FinancialDashboard() {
-  // Start EMPTY; load from API on mount
   const [rows, setRows] = React.useState<Row[]>([]);
   const [query, setQuery] = React.useState("");
   const [channel, setChannel] = React.useState<string>("all");
   const [product, setProduct] = React.useState<string>("all");
+  const [account, setAccount] = React.useState<string>("all");
+
+  // Decision thresholds
   const [minSpend, setMinSpend] = React.useState<number>(500);
   const [minClicks, setMinClicks] = React.useState<number>(100);
   const [roasKill, setRoasKill] = React.useState<number>(1.0);
@@ -172,7 +152,7 @@ export default function FinancialDashboard() {
   const [cpaKill, setCpaKill] = React.useState<number | "">("");
   const [cpaGood, setCpaGood] = React.useState<number | "">("");
 
-  // API Sync controls (defaults)
+  // API Sync controls
   const today = new Date();
   const twoWeeksAgo = new Date(Date.now() - 13 * 24 * 3600 * 1000);
   const [from, setFrom] = React.useState<string>(yyyymmdd(twoWeeksAgo));
@@ -180,13 +160,9 @@ export default function FinancialDashboard() {
   const [syncLevel, setSyncLevel] = React.useState<"ad" | "campaign">("ad");
   const [syncLoading, setSyncLoading] = React.useState(false);
 
-  // thresholds
   const thresholds = React.useMemo(
     () => ({
-      minSpend,
-      minClicks,
-      roasKill,
-      roasScale,
+      minSpend, minClicks, roasKill, roasScale,
       cpaKill: cpaKill === "" ? null : Number(cpaKill),
       cpaGood: cpaGood === "" ? null : Number(cpaGood),
     }),
@@ -194,63 +170,92 @@ export default function FinancialDashboard() {
   );
 
   const { inputRef, onPick, onFile } = useCSVImporter(setRows);
-  const allChannels = React.useMemo(() => Array.from(new Set(rows.map((r) => r.channel))), [rows]);
-  const allProducts = React.useMemo(() => Array.from(new Set(rows.map((r) => r.product))), [rows]);
 
+  const allChannels = React.useMemo(
+    () => Array.from(new Set(rows.map((r) => r.channel))).sort(),
+    [rows]
+  );
+  const allProducts = React.useMemo(
+    () => Array.from(new Set(rows.map((r) => r.product))).sort(),
+    [rows]
+  );
+  const accountOptions = React.useMemo(() => {
+    const set = new Map<string, string>();
+    rows.forEach((r) => {
+      const key = (r.account_id || r.account_name || "").trim();
+      if (!key) return;
+      const label = (r.account_name || r.account_id || "Unlabeled").toString();
+      set.set(key, label);
+    });
+    return Array.from(set.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [rows]);
+
+  // Counts for “All …”
+  const channelCount = allChannels.length;
+  const productCount = allProducts.length;
+  const accountCount = accountOptions.length;
+
+  // Filters & search
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (channel !== "all" && r.channel !== channel) return false;
       if (product !== "all" && r.product !== product) return false;
+      if (account !== "all") {
+        const key = (r.account_id || r.account_name || "").trim();
+        if (key !== account) return false;
+      }
       if (!q) return true;
-      const hay = `${r.product} ${r.campaign} ${r.ad} ${r.channel}`.toLowerCase();
+      const hay = `${r.product} ${r.campaign} ${r.ad} ${r.adset ?? ""} ${r.channel} ${r.account_name ?? ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [rows, query, channel, product]);
+  }, [rows, query, channel, product, account]);
 
   const totals = React.useMemo(() => aggregate(filtered), [filtered]);
 
-  // --- Ad-level grouping (explicit Product & Campaign columns) ---
+  // Groupings
   const groupedAd = React.useMemo(() => {
-    const keyFn = (r: Row) => `${r.product} | ${r.campaign} | ${r.ad}`;
-    const groups = by(filtered, keyFn);
-    const out = Array.from(groups.entries()).map(([k, arr]) => {
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign} | ${r.ad}`);
+    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
+    return Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
       const [prod, camp, ad] = k.split(" | ");
       return {
-        key: k,
-        product: prod,
-        campaign: camp,
-        ad,
-        channel: arr[0].channel,
-        rows: arr,
-        ...agg,
-        status: statusFor(agg, thresholds),
+        key: k, product: prod, campaign: camp, ad,
+        channel: arr[0].channel, rows: arr,
+        ...agg, status: statusFor(agg, thresholds),
       };
-    });
-    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
-    return out.sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
+    }).sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
   }, [filtered, thresholds]);
 
-  // --- Campaign-level grouping (aggregated) ---
+  const groupedAdset = React.useMemo(() => {
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign} | ${r.adset ?? "(no ad set)"}`);
+    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
+    return Array.from(groups.entries()).map(([k, arr]) => {
+      const agg = aggregate(arr);
+      const [prod, camp, adset] = k.split(" | ");
+      return {
+        key: k, product: prod, campaign: camp, adset,
+        channel: arr[0].channel, rows: arr,
+        ...agg, status: statusFor(agg, thresholds),
+      };
+    }).sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
+  }, [filtered, thresholds]);
+
   const groupedCampaign = React.useMemo(() => {
-    const keyFn = (r: Row) => `${r.product} | ${r.campaign}`;
-    const groups = by(filtered, keyFn);
-    const out = Array.from(groups.entries()).map(([k, arr]) => {
+    const groups = by(filtered, (r) => `${r.product} | ${r.campaign}`);
+    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
+    return Array.from(groups.entries()).map(([k, arr]) => {
       const agg = aggregate(arr);
       const [prod, camp] = k.split(" | ");
       return {
-        key: k,
-        product: prod,
-        campaign: camp,
-        channel: arr[0].channel, // first channel in group (mixed channels still aggregate)
-        rows: arr,
-        ...agg,
-        status: statusFor(agg, thresholds),
+        key: k, product: prod, campaign: camp,
+        channel: arr[0].channel, rows: arr,
+        ...agg, status: statusFor(agg, thresholds),
       };
-    });
-    const order = { Scale: 0, Optimize: 1, Kill: 2 } as Record<string, number>;
-    return out.sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
+    }).sort((a, b) => (order[a.status] - order[b.status]) || (b.spend - a.spend));
   }, [filtered, thresholds]);
 
   // Charts
@@ -273,18 +278,10 @@ export default function FinancialDashboard() {
   }, [filtered]);
 
   const roasVsCpa = React.useMemo(() => groupedAd.map((g) => ({
-    name: `${g.product}: ${g.ad}`,
-    roas: g.roas ?? 0,
-    cpa: g.cpa ?? 0,
-    spend: g.spend,
+    name: `${g.product}: ${g.ad}`, roas: g.roas ?? 0, cpa: g.cpa ?? 0, spend: g.spend,
   })), [groupedAd]);
 
-  function exportFilteredCSVAd() {
-    const header = ["product", "campaign", "ad", "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
-    const rowsCsv = groupedAd.map((g) => [g.product, g.campaign, g.ad ?? "", g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
-    const csv = Papa.unparse([header, ...rowsCsv]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-ad-report.csv`; a.click(); URL.revokeObjectURL(url);
-  }
+  // CSV helpers (only keep Campaign export since others were removed)
   function exportFilteredCSVCampaign() {
     const header = ["product", "campaign", "spend", "revenue", "roas", "clicks", "leads", "checkouts", "purchases", "cpc", "cpl", "cpa", "cpcb", "status"];
     const rowsCsv = groupedCampaign.map((g) => [g.product, g.campaign, g.spend, g.revenue, g.roas ?? "", g.clicks, g.leads, g.checkouts, g.purchases, g.cpc ?? "", g.cpl ?? "", g.cpa ?? "", g.cpcb ?? "", g.status]);
@@ -292,7 +289,7 @@ export default function FinancialDashboard() {
     const a = document.createElement("a"); a.href = url; a.download = `viral-ad-media-campaign-report.csv`; a.click(); URL.revokeObjectURL(url);
   }
   function downloadTemplate() {
-    const header = ["date","channel","campaign","product","ad","impressions","clicks","leads","checkouts","purchases","ad_spend","revenue"];
+    const header = ["date","channel","campaign","product","ad","adset","impressions","clicks","leads","checkouts","purchases","ad_spend","revenue","account_id","account_name"];
     const csv = Papa.unparse([header]); const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" }); const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "viral-ad-media-template.csv"; a.click(); URL.revokeObjectURL(url);
   }
@@ -325,14 +322,15 @@ export default function FinancialDashboard() {
     );
   }
 
-  // ── API Sync (calls /api/import/merge). Tries explicit range, then last_30d ──
+  // API Sync — accepts account
   const handleSync = React.useCallback(
-    async (fromDate: string, toDate: string, level: "ad" | "campaign" = "ad") => {
+    async (fromDate: string, toDate: string, level: "ad" | "campaign" = "ad", accountKey?: string) => {
       try {
         setSyncLoading(true);
         const params = new URLSearchParams({ level });
         if (fromDate && toDate) { params.set("from", fromDate); params.set("to", toDate); }
         else { params.set("date_preset", "last_30d"); }
+        if (accountKey && accountKey !== "all") params.set("account", accountKey);
 
         let res = await fetch(`/api/import/merge?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -340,10 +338,11 @@ export default function FinancialDashboard() {
 
         if (!Array.isArray(data) || data.length === 0) {
           const retry = new URLSearchParams({ level, date_preset: "last_30d" });
+          if (accountKey && accountKey !== "all") retry.set("account", accountKey);
           res = await fetch(`/api/import/merge?${retry.toString()}`);
           if (res.ok) data = await res.json();
         }
-        if (!Array.isArray(data) || data.length === 0) { return; }
+        if (!Array.isArray(data) || data.length === 0) return;
         setRows(data as Row[]);
       } catch (err: unknown) {
         alert(`Sync failed: ${(err as Error).message}`);
@@ -352,119 +351,202 @@ export default function FinancialDashboard() {
     []
   );
 
-  // Load last 30 days on mount
-  React.useEffect(() => { handleSync("", "", "ad"); }, [handleSync]);
+  // Initial load: last 30 days
+  React.useEffect(() => { handleSync("", "", "ad", account); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Reload when account changes
+  React.useEffect(() => { handleSync(from, to, syncLevel, account); }, [account]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ------- UI helpers -------
+  const hasActiveFilters = channel !== "all" || product !== "all" || account !== "all" || query.trim() !== "";
+  const resetFilter = (which: "channel" | "product" | "account" | "query") => {
+    if (which === "channel") setChannel("all");
+    if (which === "product") setProduct("all");
+    if (which === "account") setAccount("all");
+    if (which === "query") setQuery("");
+  };
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-slate-50 via-violet-50 to-cyan-50">
       <div className="mx-auto max-w-7xl p-4 sm:p-6 md:p-8">
-        <GradientHeader />
+        <div className="mb-4">
+          <GradientHeader />
+        </div>
 
-        {/* Controls */}
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 mb-6">
-          {/* Search / Filters / Actions */}
-          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
+        {/* Row: Filters (lighter), Actions & Thresholds (new), Sync */}
+        <div className="grid gap-4 lg:grid-cols-3 mb-6">
+          {/* Filters */}
+          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden lg:col-span-2">
             <CardContent className="p-4">
-              <div className="flex gap-2 items-center">
-                <div className="relative flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[220px]">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, campaign, ad…" className="pl-8" />
+                  <Input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search product, campaign, ad, adset, channel, or account…"
+                    className="pl-8 pr-8"
+                  />
+                  {query && (
+                    <button
+                      aria-label="Clear search"
+                      onClick={() => setQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <XIcon className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
-                <Select value={channel} onValueChange={setChannel}>
-                  <SelectTrigger className="w-36"><SelectValue placeholder="Channel" /></SelectTrigger>
+
+                {/* Account */}
+                <Select value={account} onValueChange={setAccount}>
+                  <SelectTrigger className="w-52">
+                    <SelectValue placeholder={`All Accounts (${accountCount})`}>
+                      {account === "all"
+                        ? `All Accounts (${accountCount})`
+                        : (accountOptions.find(a => a.value === account)?.label ?? account)}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Channels</SelectItem>
+                    <SelectItem value="all">{`All Accounts (${accountCount})`}</SelectItem>
+                    {accountOptions.map((a) => (
+                      <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* Channel */}
+                <Select value={channel} onValueChange={setChannel}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder={`All Channels (${channelCount})`}>
+                      {channel === "all" ? `All Channels (${channelCount})` : channel}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{`All Channels (${channelCount})`}</SelectItem>
                     {allChannels.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
+
+                {/* Product */}
                 <Select value={product} onValueChange={setProduct}>
-                  <SelectTrigger className="w-44"><SelectValue placeholder="Product" /></SelectTrigger>
+                  <SelectTrigger className="w-52">
+                    <SelectValue placeholder={`All Products (${productCount})`}>
+                      {product === "all" ? `All Products (${productCount})` : product}
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Products</SelectItem>
+                    <SelectItem value="all">{`All Products (${productCount})`}</SelectItem>
                     {allProducts.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Min Spend</span>
-                  <div className="w-40"><Slider value={[minSpend]} min={0} max={5000} step={50} onValueChange={(v) => setMinSpend(v[0])} /></div>
-                  <Badge variant="outline" className="bg-emerald-50 border-emerald-200 text-emerald-700">{formatCurrency(minSpend)}</Badge>
+              {/* Active filters */}
+              {hasActiveFilters && (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {query.trim() && (
+                    <Badge variant="outline" className="gap-1 bg-slate-50">
+                      Search: “{query.trim()}”
+                      <button onClick={() => resetFilter("query")} className="ml-1 opacity-70 hover:opacity-100">
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {account !== "all" && (
+                    <Badge variant="outline" className="gap-1 bg-slate-50">
+                      Account: {accountOptions.find(a => a.value === account)?.label ?? account}
+                      <button onClick={() => resetFilter("account")} className="ml-1 opacity-70 hover:opacity-100">
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {channel !== "all" && (
+                    <Badge variant="outline" className="gap-1 bg-slate-50">
+                      Channel: {channel}
+                      <button onClick={() => resetFilter("channel")} className="ml-1 opacity-70 hover:opacity-100">
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  {product !== "all" && (
+                    <Badge variant="outline" className="gap-1 bg-slate-50">
+                      Product: {product}
+                      <button onClick={() => resetFilter("product")} className="ml-1 opacity-70 hover:opacity-100">
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  )}
+                  <Button variant="outline" size="sm" onClick={() => { setQuery(""); setAccount("all"); setChannel("all"); setProduct("all"); }} className="ml-auto">
+                    Reset All
+                  </Button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Min Clicks</span>
-                  <div className="w-40"><Slider value={[minClicks]} min={0} max={2000} step={10} onValueChange={(v) => setMinClicks(v[0])} /></div>
-                  <Badge variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">{fmt(minClicks, 0)}</Badge>
-                </div>
-
-                {/* Actions */}
-                <div className="flex flex-wrap items-center gap-2 ml-auto w-full sm:w-auto">
-                  <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap shrink-0"><Upload className="h-4 w-4" />Import CSV</Button>
-                  <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Template</Button>
-                  <Button onClick={exportFilteredCSVAd} className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Export Ads</Button>
-                  <Button onClick={exportFilteredCSVCampaign} variant="outline" className="gap-2 whitespace-nowrap shrink-0"><Download className="h-4 w-4" />Export Campaigns</Button>
-                  <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Thresholds */}
+          {/* Actions & Thresholds */}
           <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2 text-slate-600"><Settings2 className="h-4 w-4" /><span className="text-sm font-medium">Decision Thresholds</span></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-slate-500">ROAS – Kill below</label>
-                  <Input type="number" step="0.1" value={roasKill} onChange={(e) => setRoasKill(Number(e.target.value))} />
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Settings2 className="h-4 w-4" /> Actions & Thresholds
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid gap-3">
+                {/* Thresholds row */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Min Spend</span>
+                    <div className="w-36"><Slider value={[minSpend]} min={0} max={5000} step={50} onValueChange={(v) => setMinSpend(v[0])} /></div>
+                    <Badge variant="outline" className="bg-emerald-50 border-emerald-200 text-emerald-700">{formatCurrency(minSpend)}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Min Clicks</span>
+                    <div className="w-36"><Slider value={[minClicks]} min={0} max={2000} step={10} onValueChange={(v) => setMinClicks(v[0])} /></div>
+                    <Badge variant="outline" className="bg-blue-50 border-blue-200 text-blue-700">{fmt(minClicks, 0)}</Badge>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs text-slate-500">ROAS – Scale at/above</label>
-                  <Input type="number" step="0.1" value={roasScale} onChange={(e) => setRoasScale(Number(e.target.value))} />
+
+                {/* Import / Template (Export Campaigns only) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap"><Upload className="h-4 w-4" />Import CSV</Button>
+                  <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Template</Button>
+                  <Button onClick={exportFilteredCSVCampaign} variant="outline" className="gap-2 whitespace-nowrap col-span-2"><Download className="h-4 w-4" />Export Campaigns</Button>
                 </div>
-                <div>
-                  <label className="text-xs text-slate-500">CPA – Kill above (optional)</label>
-                  <Input type="number" step="0.01" value={cpaKill} onChange={(e) => setCpaKill(e.target.value === "" ? "" : Number(e.target.value))} />
-                </div>
-                <div>
-                  <label className="text-xs text-slate-500">CPA – Scale at/below (optional)</label>
-                  <Input type="number" step="0.01" value={cpaGood} onChange={(e) => setCpaGood(e.target.value === "" ? "" : Number(e.target.value))} />
-                </div>
+                <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
               </div>
             </CardContent>
           </Card>
 
           {/* Sync */}
-          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden">
+          <Card className="rounded-2xl border-2 border-white/40 bg-white/80 backdrop-blur overflow-hidden lg:col-span-3">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2 text-slate-600"><CalendarIcon className="h-4 w-4" /><span className="text-sm font-medium">Sync from APIs</span></div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="md:col-span-1">
                   <label className="text-xs text-slate-500">From</label>
                   <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
                 </div>
-                <div>
+                <div className="md:col-span-1">
                   <label className="text-xs text-slate-500">To</label>
                   <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="md:col-span-1">
                   <label className="text-xs text-slate-500">Level</label>
                   <Select value={syncLevel} onValueChange={(v) => setSyncLevel(v as "ad" | "campaign")}>
-                    <SelectTrigger><SelectValue placeholder="Level" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Level">{syncLevel === "ad" ? "Ad" : "Campaign"}</SelectValue></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ad">Ad</SelectItem>
                       <SelectItem value="campaign">Campaign</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
-                  <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel)} className="gap-2 whitespace-nowrap shrink-0">
+                <div className="md:col-span-2 flex items-end gap-2">
+                  <Button disabled={syncLoading} onClick={() => handleSync(from, to, syncLevel, account)} className="gap-2 whitespace-nowrap shrink-0">
                     <Upload className="h-4 w-4" /> {syncLoading ? "Syncing…" : "Sync from APIs"}
                   </Button>
-                  <Button variant="outline" disabled={syncLoading} onClick={() => handleSync("", "", syncLevel)} className="gap-2 whitespace-nowrap shrink-0">
-                    <Upload className="h-4 w-4" /> Sync (Last 30 Days)
-                  </Button>
+                  {/* Removed: Sync (Last 30 Days) */}
                 </div>
               </div>
             </CardContent>
@@ -534,115 +616,29 @@ export default function FinancialDashboard() {
           </Card>
         </div>
 
-        {/* Campaign-Level Performance Table */}
-        <Card className="mt-6 mb-6 rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-slate-700">Campaign-Level Performance</CardTitle>
-            <div className="md:hidden flex items-center gap-2">
-              <Button onClick={exportFilteredCSVCampaign} className="gap-2 whitespace-nowrap">
-                <Download className="h-4 w-4" />Export Campaigns
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0 overflow-x-auto">
-            <table className="w-full text-sm table-fixed">
-              <colgroup>
-                <col className="w-[110px]" /> {/* status */}
-                <col className="w-[200px]" /> {/* product */}
-                <col />                      {/* campaign */}
-                <col className="w-[110px]" /> {/* spend */}
-                <col className="w-[120px]" /> {/* revenue */}
-                <col className="w-[80px]" />  {/* roas */}
-                <col className="w-[90px]" />  {/* cpc */}
-                <col className="w-[90px]" />  {/* cpl */}
-                <col className="w-[90px]" />  {/* cpa */}
-                <col className="w-[90px]" />  {/* cpcb */}
-                <col className="w-[80px]" />  {/* clicks */}
-                <col className="w-[80px]" />  {/* leads */}
-                <col className="w-[90px]" />  {/* checkouts */}
-                <col className="w-[100px]" /> {/* purchases */}
-              </colgroup>
-              <thead>
-                <tr className="text-left text-slate-600 border-b">
-                  <th className="py-2 pr-4">Status</th>
-                  <th className="py-2 pr-4">Product</th>
-                  <th className="py-2 pr-4">Campaign</th>
-                  <th className="py-2 pr-4">Spend</th>
-                  <th className="py-2 pr-4">Revenue</th>
-                  <th className="py-2 pr-4">ROAS</th>
-                  <th className="py-2 pr-4">CPC</th>
-                  <th className="py-2 pr-4">CPL</th>
-                  <th className="py-2 pr-4">CPA</th>
-                  <th className="py-2 pr-4">CPCB</th>
-                  <th className="py-2 pr-4">Clicks</th>
-                  <th className="py-2 pr-4">Leads</th>
-                  <th className="py-2 pr-4">Checkouts</th>
-                  <th className="py-2 pr-4">Purchases</th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupedCampaign.map((g, i) => (
-                  <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
-                    <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
-                    <td className="py-2 pr-4">
-                      <div className="font-semibold text-slate-800 truncate">{g.product}</div>
-                      <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
-                    </td>
-                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
-                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
-                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
-                    <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
-                    <td className="py-2 pr-4">{formatCurrency(g.cpc)}</td>
-                    <td className="py-2 pr-4">{formatCurrency(g.cpl)}</td>
-                    <td className="py-2 pr-4">{formatCurrency(g.cpa)}</td>
-                    <td className="py-2 pr-4">{formatCurrency(g.cpcb)}</td>
-                    <td className="py-2 pr-4">{fmt(g.clicks, 0)}</td>
-                    <td className="py-2 pr-4">{fmt(g.leads, 0)}</td>
-                    <td className="py-2 pr-4">{fmt(g.checkouts, 0)}</td>
-                    <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
-                  </tr>
-                ))}
-                {groupedCampaign.length === 0 && (
-                  <tr>
-                    <td colSpan={14} className="py-10 text-center text-slate-500">
-                      {syncLoading ? "Loading last 30 days…" : "No campaign-level data yet."}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-
-        {/* Ad-Level Performance Table (now with Product & Campaign columns) */}
+        {/* Ad-Level Table */}
         <Card className="rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-slate-700">Ad-Level Performance</CardTitle>
-            <div className="md:hidden flex items-center gap-2">
-              <Button onClick={onPick} variant="secondary" className="gap-2 whitespace-nowrap"><Upload className="h-4 w-4" />Import CSV</Button>
-              <Button onClick={downloadTemplate} variant="outline" className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Template</Button>
-              <Button onClick={exportFilteredCSVAd} className="gap-2 whitespace-nowrap"><Download className="h-4 w-4" />Export Ads</Button>
-              <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={onFile} />
-            </div>
           </CardHeader>
           <CardContent className="pt-0 overflow-x-auto">
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col className="w-[110px]" /> {/* status */}
-                <col className="w-[170px]" /> {/* product */}
-                <col className="w-[220px]" /> {/* campaign */}
-                <col className="w-[220px]" /> {/* ad */}
-                <col className="w-[110px]" /> {/* spend */}
-                <col className="w-[120px]" /> {/* revenue */}
-                <col className="w-[80px]" />  {/* roas */}
-                <col className="w-[90px]" />  {/* cpc */}
-                <col className="w-[90px]" />  {/* cpl */}
-                <col className="w-[90px]" />  {/* cpa */}
-                <col className="w-[90px]" />  {/* cpcb */}
-                <col className="w-[80px]" />  {/* clicks */}
-                <col className="w-[80px]" />  {/* leads */}
-                <col className="w-[90px]" />  {/* checkouts */}
-                <col className="w-[100px]" /> {/* purchases */}
+                <col className="w-[110px]" />
+                <col className="w-[170px]" />
+                <col className="w-[220px]" />
+                <col className="w-[220px]" />
+                <col className="w-[110px]" />
+                <col className="w-[120px]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[80px]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[100px]" />
               </colgroup>
               <thead>
                 <tr className="text-left text-slate-600 border-b">
@@ -687,24 +683,154 @@ export default function FinancialDashboard() {
                   </tr>
                 ))}
                 {groupedAd.length === 0 && (
-                  <tr>
-                    <td colSpan={15} className="py-10 text-center text-slate-500">
-                      {syncLoading ? "Loading last 30 days…" : "No ad-level data yet."}
-                    </td>
-                  </tr>
+                  <tr><td colSpan={15} className="py-10 text-center text-slate-500">{syncLoading ? "Loading…" : "No ad-level data yet."}</td></tr>
                 )}
               </tbody>
             </table>
           </CardContent>
         </Card>
 
-        {/* Footer helper */}
+        {/* Adset-Level Table */}
+        <Card className="mt-6 rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700">Adset-Level Performance</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 overflow-x-auto">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-[110px]" />
+                <col className="w-[170px]" />
+                <col className="w-[220px]" />
+                <col className="w-[220px]" />
+                <col className="w-[110px]" />
+                <col className="w-[120px]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[90px]" />
+                <col className="w-[80px]" />
+                <col className="w-[80px]" />
+                <col className="w-[90px]" />
+                <col className="w-[100px]" />
+              </colgroup>
+              <thead>
+                <tr className="text-left text-slate-600 border-b">
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Product</th>
+                  <th className="py-2 pr-4">Campaign</th>
+                  <th className="py-2 pr-4">Adset</th>
+                  <th className="py-2 pr-4">Spend</th>
+                  <th className="py-2 pr-4">Revenue</th>
+                  <th className="py-2 pr-4">ROAS</th>
+                  <th className="py-2 pr-4">CPC</th>
+                  <th className="py-2 pr-4">CPL</th>
+                  <th className="py-2 pr-4">CPA</th>
+                  <th className="py-2 pr-4">CPCB</th>
+                  <th className="py-2 pr-4">Clicks</th>
+                  <th className="py-2 pr-4">Leads</th>
+                  <th className="py-2 pr-4">Checkouts</th>
+                  <th className="py-2 pr-4">Purchases</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedAdset.map((g, i) => (
+                  <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
+                    <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
+                    <td className="py-2 pr-4">
+                      <div className="font-semibold text-slate-800 truncate">{g.product}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
+                    </td>
+                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 text-slate-700 truncate">{g.adset}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
+                    <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpc)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpl)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpa)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpcb)}</td>
+                    <td className="py-2 pr-4">{fmt(g.clicks, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.leads, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.checkouts, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
+                  </tr>
+                ))}
+                {groupedAdset.length === 0 && (
+                  <tr><td colSpan={15} className="py-10 text-center text-slate-500">{syncLoading ? "Loading…" : "No adset-level data yet."}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        {/* Campaign-Level Table */}
+        <Card className="mt-6 rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-slate-700">Campaign-Level Performance</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 overflow-x-auto">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-[110px]" /><col className="w-[200px]" /><col />
+                <col className="w-[110px]" /><col className="w-[120px]" /><col className="w-[80px]" />
+                <col className="w-[90px]" /><col className="w-[90px]" /><col className="w-[90px]" />
+                <col className="w-[90px]" /><col className="w-[80px]" /><col className="w-[80px]" />
+                <col className="w-[90px]" /><col className="w-[100px]" />
+              </colgroup>
+              <thead>
+                <tr className="text-left text-slate-600 border-b">
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Product</th>
+                  <th className="py-2 pr-4">Campaign</th>
+                  <th className="py-2 pr-4">Spend</th>
+                  <th className="py-2 pr-4">Revenue</th>
+                  <th className="py-2 pr-4">ROAS</th>
+                  <th className="py-2 pr-4">CPC</th>
+                  <th className="py-2 pr-4">CPL</th>
+                  <th className="py-2 pr-4">CPA</th>
+                  <th className="py-2 pr-4">CPCB</th>
+                  <th className="py-2 pr-4">Clicks</th>
+                  <th className="py-2 pr-4">Leads</th>
+                  <th className="py-2 pr-4">Checkouts</th>
+                  <th className="py-2 pr-4">Purchases</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedCampaign.map((g, i) => (
+                  <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
+                    <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
+                    <td className="py-2 pr-4">
+                      <div className="font-semibold text-slate-800 truncate">{g.product}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
+                    </td>
+                    <td className="py-2 pr-4 truncate">{g.campaign}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.spend)}</td>
+                    <td className="py-2 pr-4 font-medium">{formatCurrency(g.revenue)}</td>
+                    <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpc)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpl)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpa)}</td>
+                    <td className="py-2 pr-4">{formatCurrency(g.cpcb)}</td>
+                    <td className="py-2 pr-4">{fmt(g.clicks, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.leads, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.checkouts, 0)}</td>
+                    <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
+                  </tr>
+                ))}
+                {groupedCampaign.length === 0 && (
+                  <tr><td colSpan={14} className="py-10 text-center text-slate-500">{syncLoading ? "Loading…" : "No campaign-level data yet."}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        {/* Footer */}
         <div className="mt-8 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <DollarSign className="h-3.5 w-3.5" />
-            <span>
-              <span className="font-semibold">CPC</span> = Spend / Clicks; <span className="font-semibold">CPL</span> = Spend / Leads; <span className="font-semibold">CPA</span> = Spend / Purchases; <span className="font-semibold">CPCB</span> = Spend / Checkouts; <span className="font-semibold">ROAS</span> = Revenue / Spend.
-            </span>
+            <span><b>CPC</b>=Spend/Clicks · <b>CPL</b>=Spend/Leads · <b>CPA</b>=Spend/Purchases · <b>CPCB</b>=Spend/Checkouts · <b>ROAS</b>=Revenue/Spend</span>
           </div>
           <div className="opacity-80">© {new Date().getFullYear()} Viral Ad Media, LLC</div>
         </div>
