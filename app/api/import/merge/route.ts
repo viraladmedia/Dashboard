@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: app/api/import/merge/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import type { Row } from "@/lib/row";
