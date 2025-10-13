@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: app/about/page.tsx
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
