@@ -20,19 +20,40 @@ import {
   ResponsiveContainer, Tooltip, Legend, LineChart as RLineChart, Line,
 } from "recharts";
 
-/* ------------------------ helpers ------------------------ */
+/** ----- helpers ----- */
 const safePer = (num?: number, den?: number) =>
   !num || !den || den === 0 ? null : num / den;
 
-function norm(row: Partial<Row>) {
-  const spend = (row.ad_spend ?? row.spend ?? row.ad_spend_usd ?? 0) as number;
-  const rev = (row.revenue ?? 0) as number;
-  const imps = (row.impressions ?? 0) as number;
-  const clicks = (row.clicks ?? 0) as number;
-  const leads = (row.leads ?? 0) as number;
-  const checkouts = (row.checkouts ?? 0) as number;
-  const purchases = (row.purchases ?? 0) as number;
-  const roas = spend > 0 ? rev / spend : (row.roas as number | undefined) ?? null;
+/** Works for both raw Row and aggregate outputs */
+type Normalizable = Partial<{
+  ad_spend: number;
+  spend: number;
+  ad_spend_usd: number;
+  revenue: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  checkouts: number;
+  purchases: number;
+  roas: number;
+}>;
+
+const num = (v: unknown, d = 0) => {
+  if (typeof v === "number") return Number.isFinite(v) ? v : d;
+  if (v == null) return d;
+  const n = parseFloat(String(v));
+  return Number.isFinite(n) ? n : d;
+};
+
+function norm(row: Normalizable) {
+  const spend = num(row.ad_spend ?? row.spend ?? row.ad_spend_usd, 0);
+  const rev = num(row.revenue, 0);
+  const imps = num(row.impressions, 0);
+  const clicks = num(row.clicks, 0);
+  const leads = num(row.leads, 0);
+  const checkouts = num(row.checkouts, 0);
+  const purchases = num(row.purchases, 0);
+  const roas = spend > 0 ? rev / spend : (typeof row.roas === "number" ? row.roas : null);
   return { spend, rev, imps, clicks, leads, checkouts, purchases, roas };
 }
 
@@ -56,11 +77,11 @@ function mostCommon(arr: (string | undefined | null)[]) {
   return best || "";
 }
 
-/* -------------------- page -------------------- */
+/** ----- page ----- */
 export default function PerformancePage() {
-  const { accountId } = useAccount(); // single source of truth
+  const { accountId } = useAccount();
 
-  // lazy init avoids SSR localStorage access
+  // persisted prefs
   const [level, setLevel] = React.useState<Level>(() =>
     (getFromLS<Level>("vam.level", "ad") as Level) || "ad"
   );
@@ -68,24 +89,22 @@ export default function PerformancePage() {
     (getFromLS<Channel>("vam.channel", "all") as Channel) || "all"
   );
 
+  // date range
   const [preset, setPreset] = React.useState<Preset>("last_24h");
-  const [from, setFrom] = React.useState<string>("");
-  const [to, setTo] = React.useState<string>("");
+  const [from, setFrom] = React.useState<string>(""); const [to, setTo] = React.useState<string>("");
 
+  // ui/data
   const [query, setQuery] = React.useState("");
   const [rows, setRows] = React.useState<Row[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // decision thresholds
+  // **trimmed thresholds** → only these two remain
   const [minSpend, setMinSpend] = React.useState(0);
   const [minClicks, setMinClicks] = React.useState(0);
-  const [roasKill, setRoasKill] = React.useState(0.9);
-  const [roasScale, setRoasScale] = React.useState(3.0);
-  const [cpaKill, setCpaKill] = React.useState<number | "">("");
-  const [cpaGood, setCpaGood] = React.useState<number | "">("");
 
   // URL overrides
   React.useEffect(() => {
+    if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     const dp = url.searchParams.get("date_preset") as Preset | null;
     const f = url.searchParams.get("from");
@@ -94,6 +113,7 @@ export default function PerformancePage() {
     if (f && t) { setPreset("custom"); setFrom(f); setTo(t); }
   }, []);
 
+  /** fetch merged rows */
   const fetchRows = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -120,29 +140,28 @@ export default function PerformancePage() {
 
   const handleSync = React.useCallback(async () => { await fetchRows(); }, [fetchRows]);
 
-  // filters
+  /* filters */
   const filteredRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      const { spend, clicks } = norm(r);
+      const { spend, clicks } = norm(r as unknown as Normalizable);
       if (spend < minSpend) return false;
       if (clicks < minClicks) return false;
       if (!q) return true;
-      const hay = [
-        r.product, r.campaign, r.adset, r.ad, r.channel, r.account_name,
-      ].map(x => (x || "").toString().toLowerCase()).join(" ");
+      const hay = [r.product, r.campaign, r.adset, r.ad, r.channel, r.account_name]
+        .map(x => (x || "").toString().toLowerCase()).join(" ");
       return hay.includes(q);
     });
   }, [rows, minSpend, minClicks, query]);
 
-  // aggregates
+  /* aggregates */
   const agg = React.useMemo(() => aggregate(filteredRows), [filteredRows]);
   const CPC  = safePer(agg.spend, agg.clicks);
   const CPL  = safePer(agg.spend, agg.leads);
   const CPA  = safePer(agg.spend, agg.purchases);
   const CPCB = safePer(agg.spend, agg.checkouts);
 
-  // charts
+  /* charts */
   const roasByDim = React.useMemo(() => {
     const keyGetter = (r: Row) =>
       level === "ad" ? (r.ad || "(no ad)")
@@ -151,7 +170,8 @@ export default function PerformancePage() {
     const g = groupBy(filteredRows, keyGetter);
     return Array.from(g.entries()).map(([name, arr]) => {
       const a = aggregate(arr);
-      return { name, roas: a.roas ?? 0, revenue: a.revenue, spend: a.spend };
+      const n = norm(a as unknown as Normalizable);
+      return { name, roas: n.roas ?? 0, revenue: n.rev, spend: n.spend };
     }).sort((a, b) => (b.roas - a.roas) || (b.revenue - a.revenue)).slice(0, 12);
   }, [filteredRows, level]);
 
@@ -159,11 +179,12 @@ export default function PerformancePage() {
     const g = groupBy(filteredRows, r => r.date);
     return Array.from(g.entries()).map(([date, arr]) => {
       const a = aggregate(arr);
-      return { date, spend: a.spend, revenue: a.revenue, clicks: a.clicks };
+      const n = norm(a as unknown as Normalizable);
+      return { date, spend: n.spend, revenue: n.rev, clicks: n.clicks };
     }).sort((a, b) => (a.date < b.date ? -1 : 1));
   }, [filteredRows]);
 
-  // table rows
+  /* table */
   const tableRows = React.useMemo(() => {
     const keyGetter = (r: Row) =>
       level === "ad" ? (r.ad || "(no ad)")
@@ -172,22 +193,20 @@ export default function PerformancePage() {
     const g = groupBy(filteredRows, keyGetter);
     return Array.from(g.entries()).map(([entity, arr]) => {
       const a = aggregate(arr);
-      const { spend, rev, imps, clicks, leads, checkouts, purchases, roas } = {
-        ...norm(a),
-        imps: a.impressions ?? 0,
-      };
+      const n = norm(a as unknown as Normalizable);
+      const imps = a.impressions ?? 0;
       return {
         entity,
         product: mostCommon(arr.map(x => x.product)),
         channel: mostCommon(arr.map(x => x.channel)),
         account: mostCommon(arr.map(x => x.account_name || x.account)),
-        spend, rev, roas,
-        imps, clicks, leads, checkouts, purchases,
-        cpc: safePer(spend, clicks),
-        cpl: safePer(spend, leads),
-        cpa: safePer(spend, purchases),
-        cpcb: safePer(spend, checkouts),
-        ctr: imps ? (clicks / imps) : null,
+        spend: n.spend, rev: n.rev, roas: n.roas,
+        imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
+        cpc: safePer(n.spend, n.clicks),
+        cpl: safePer(n.spend, n.leads),
+        cpa: safePer(n.spend, n.purchases),
+        cpcb: safePer(n.spend, n.checkouts),
+        ctr: imps ? (n.clicks / imps) : null,
       };
     }).sort((a, b) => b.rev - a.rev);
   }, [filteredRows, level]);
@@ -196,23 +215,41 @@ export default function PerformancePage() {
     <div className="w-full">
       <TopBar query={query} setQuery={setQuery} subtitle="Performance" title="Performance Overview" />
 
-      
-        <ControlsBar
-          thresholds={{ minSpend: 0, setMinSpend: () => {}, minClicks: 0, setMinClicks: () => {} }}
-          selectedPreset={preset}
-          onPresetChange={(p) => { setPreset(p); if (p !== "custom") { setFrom(""); setTo(""); } }}
-          from={from} to={to} setFrom={setFrom} setTo={setTo}
-          onSync={fetchRows}
-          syncing={loading}
-          level={level} onLevelChange={() => {}}
-          channel={channel} onChannelChange={setChannel}
-          showAccount
-          showLevel={true}
-          showChannel
-          showThresholds={false}
-          showImportExport={true}
-          allowCustomRange
-        />
+      <ControlsBar
+        thresholds={{
+          minSpend, setMinSpend,
+          minClicks, setMinClicks,
+        }}
+        selectedPreset={preset}
+        onPresetChange={(p) => { setPreset(p); if (p !== "custom") { setFrom(""); setTo(""); } }}
+        from={from} to={to} setFrom={setFrom} setTo={setTo}
+        onSync={handleSync}
+        syncing={loading}
+        level={level}
+        onLevelChange={(l) => {
+          setLevel(l);
+          if (typeof window !== "undefined") {
+            try { localStorage.setItem("vam.level", l); } catch {}
+          }
+        }}
+        channel={channel}
+        onChannelChange={(c) => {
+          setChannel(c);
+          if (typeof window !== "undefined") {
+            try { localStorage.setItem("vam.channel", c); } catch {}
+          }
+        }}
+        // keep icon-only import/export available if you wired handlers elsewhere
+        onExportClick={() => window.dispatchEvent(new CustomEvent("vam:export-campaigns"))}
+        onImportClick={() => window.dispatchEvent(new CustomEvent("vam:open-import"))}
+        showAccount
+        showLevel
+        showChannel
+        showThresholds
+        showImportExport
+        allowCustomRange
+      />
+
       {/* KPIs */}
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6 mb-5">
         <Stat title="Spend" value={currency(agg.spend)} />

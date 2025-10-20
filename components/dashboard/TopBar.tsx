@@ -1,9 +1,7 @@
 // File: components/dashboard/TopBar.tsx
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import * as React from "react";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -64,7 +62,6 @@ export function TopBar({
 
         {/* Right: Live + Profile */}
         <div className="flex items-center gap-2">
-          <Badge className="bg-emerald-500/15 text-emerald-700 border-emerald-400/40">Live</Badge>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className={cn("inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-2.5 py-1.5")}>
