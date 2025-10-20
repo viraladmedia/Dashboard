@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: app/contact/page.tsx
 "use client";
 
