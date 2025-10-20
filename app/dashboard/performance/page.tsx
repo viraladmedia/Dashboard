@@ -186,30 +186,36 @@ export default function PerformancePage() {
 
   /* table */
   const tableRows = React.useMemo(() => {
-    const keyGetter = (r: Row) =>
-      level === "ad" ? (r.ad || "(no ad)")
-      : level === "adset" ? (r.adset || "(no ad set)")
-      : (r.campaign || "(no campaign)");
-    const g = groupBy(filteredRows, keyGetter);
-    return Array.from(g.entries()).map(([entity, arr]) => {
-      const a = aggregate(arr);
-      const n = norm(a as unknown as Normalizable);
-      const imps = a.impressions ?? 0;
-      return {
-        entity,
-        product: mostCommon(arr.map(x => x.product)),
-        channel: mostCommon(arr.map(x => x.channel)),
-        account: mostCommon(arr.map(x => x.account_name || x.account)),
-        spend: n.spend, rev: n.rev, roas: n.roas,
-        imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
-        cpc: safePer(n.spend, n.clicks),
-        cpl: safePer(n.spend, n.leads),
-        cpa: safePer(n.spend, n.purchases),
-        cpcb: safePer(n.spend, n.checkouts),
-        ctr: imps ? (n.clicks / imps) : null,
-      };
-    }).sort((a, b) => b.rev - a.rev);
-  }, [filteredRows, level]);
+  const keyGetter = (r: Row) =>
+    level === "ad" ? (r.ad || "(no ad)")
+    : level === "adset" ? (r.adset || "(no ad set)")
+    : (r.campaign || "(no campaign)");
+
+  const g = groupBy(filteredRows, keyGetter);
+  return Array.from(g.entries()).map(([entity, arr]) => {
+    const a = aggregate(arr);
+    const n = norm(a as unknown as Normalizable);
+    const imps = a.impressions ?? 0;
+    return {
+      entity,
+      product: mostCommon(arr.map(x => x.product)),
+      channel: mostCommon(arr.map(x => x.channel)),
+      account: mostCommon(
+        arr.map((x) => {
+          const anyx = x as any;
+          return x.account_name ?? anyx.account ?? anyx.accountId ?? anyx.account_id ?? "";
+        })
+      ),
+      spend: n.spend, rev: n.rev, roas: n.roas,
+      imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
+      cpc: safePer(n.spend, n.clicks),
+      cpl: safePer(n.spend, n.leads),
+      cpa: safePer(n.spend, n.purchases),
+      cpcb: safePer(n.spend, n.checkouts),
+      ctr: imps ? (n.clicks / imps) : null,
+    };
+  }).sort((a, b) => b.rev - a.rev);
+}, [filteredRows, level]);
 
   return (
     <div className="w-full">
