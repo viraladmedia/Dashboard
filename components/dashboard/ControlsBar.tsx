@@ -101,6 +101,24 @@ export function ControlsBar({
   const onChangeAccount = (val: string) => {
     const lbl = accounts.find(a => a.key === val)?.label || (val === "all" ? "All Accounts" : val);
     setAccount(val, lbl);
+    // No direct fetch here; page reacts to accountId change and refetches.
+  };
+
+  const onPickPreset = (val: Preset) => {
+    onPresetChange(val);
+    if (val !== "custom") {
+      // Clear custom dates when leaving custom
+      setFrom(""); setTo("");
+    }
+  };
+
+  const onChangeFrom = (v: string) => {
+    setFrom(v);
+    if (selectedPreset !== "custom") onPresetChange("custom");
+  };
+  const onChangeTo = (v: string) => {
+    setTo(v);
+    if (selectedPreset !== "custom") onPresetChange("custom");
   };
 
   return (
@@ -173,7 +191,7 @@ export function ControlsBar({
               ["custom", "Custom…"],
             ] as [Preset, string][])
               .map(([val, label]) => (
-                <DropdownMenuItem key={val} onClick={() => onPresetChange(val)}>
+                <DropdownMenuItem key={val} onClick={() => onPickPreset(val)}>
                   {label}
                 </DropdownMenuItem>
             ))}
@@ -183,9 +201,9 @@ export function ControlsBar({
         {/* Custom range */}
         {allowCustomRange && selectedPreset === "custom" && (
           <div className="flex items-center gap-1">
-            <Input type="date" className="h-9" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <Input type="date" className="h-9" value={from} onChange={(e) => onChangeFrom(e.target.value)} />
             <span className="text-slate-500 text-sm">to</span>
-            <Input type="date" className="h-9" value={to} onChange={(e) => setTo(e.target.value)} />
+            <Input type="date" className="h-9" value={to} onChange={(e) => onChangeTo(e.target.value)} />
           </div>
         )}
 

@@ -40,7 +40,6 @@ type Normalizable = Partial<{
 
 /** Safely read an account label from heterogeneous rows without using `any` */
 function accountFromRow(x: Row): string {
-  // some sources only provide `account`, `accountId`, or `account_id`
   const loose = x as unknown as Record<string, unknown>;
   if (typeof x.account_name === "string" && x.account_name) return x.account_name;
   if (typeof loose["account"] === "string" && loose["account"]) return loose["account"] as string;
@@ -48,7 +47,6 @@ function accountFromRow(x: Row): string {
   if (typeof loose["account_id"] === "string" && loose["account_id"]) return loose["account_id"] as string;
   return "";
 }
-
 
 const num = (v: unknown, d = 0) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : d;
@@ -110,11 +108,11 @@ export default function PerformancePage() {
   const [rows, setRows] = React.useState<Row[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // **trimmed thresholds** → only these two remain
+  // thresholds
   const [minSpend, setMinSpend] = React.useState(0);
   const [minClicks, setMinClicks] = React.useState(0);
 
-  // URL overrides
+  // URL overrides (optional deep-link)
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
@@ -125,7 +123,7 @@ export default function PerformancePage() {
     if (f && t) { setPreset("custom"); setFrom(f); setTo(t); }
   }, []);
 
-  /** fetch merged rows */
+  /** fetch merged rows (refires on any control change) */
   const fetchRows = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -198,42 +196,38 @@ export default function PerformancePage() {
 
   /* table */
   const tableRows = React.useMemo(() => {
-  const keyGetter = (r: Row) =>
-    level === "ad" ? (r.ad || "(no ad)")
-    : level === "adset" ? (r.adset || "(no ad set)")
-    : (r.campaign || "(no campaign)");
+    const keyGetter = (r: Row) =>
+      level === "ad" ? (r.ad || "(no ad)")
+      : level === "adset" ? (r.adset || "(no ad set)")
+      : (r.campaign || "(no campaign)");
 
-  const g = groupBy(filteredRows, keyGetter);
-  return Array.from(g.entries()).map(([entity, arr]) => {
-    const a = aggregate(arr);
-    const n = norm(a as unknown as Normalizable);
-    const imps = a.impressions ?? 0;
-    return {
-      entity,
-      product: mostCommon(arr.map(x => x.product)),
-      channel: mostCommon(arr.map(x => x.channel)),
-      account: mostCommon(arr.map(accountFromRow)),
-
-      spend: n.spend, rev: n.rev, roas: n.roas,
-      imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
-      cpc: safePer(n.spend, n.clicks),
-      cpl: safePer(n.spend, n.leads),
-      cpa: safePer(n.spend, n.purchases),
-      cpcb: safePer(n.spend, n.checkouts),
-      ctr: imps ? (n.clicks / imps) : null,
-    };
-  }).sort((a, b) => b.rev - a.rev);
-}, [filteredRows, level]);
+    const g = groupBy(filteredRows, keyGetter);
+    return Array.from(g.entries()).map(([entity, arr]) => {
+      const a = aggregate(arr);
+      const n = norm(a as unknown as Normalizable);
+      const imps = a.impressions ?? 0;
+      return {
+        entity,
+        product: mostCommon(arr.map(x => x.product)),
+        channel: mostCommon(arr.map(x => x.channel)),
+        account: mostCommon(arr.map(accountFromRow)),
+        spend: n.spend, rev: n.rev, roas: n.roas,
+        imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
+        cpc: safePer(n.spend, n.clicks),
+        cpl: safePer(n.spend, n.leads),
+        cpa: safePer(n.spend, n.purchases),
+        cpcb: safePer(n.spend, n.checkouts),
+        ctr: imps ? (n.clicks / imps) : null,
+      };
+    }).sort((a, b) => b.rev - a.rev);
+  }, [filteredRows, level]);
 
   return (
     <div className="w-full">
       <TopBar query={query} setQuery={setQuery} subtitle="Performance" title="Performance Overview" />
 
       <ControlsBar
-        thresholds={{
-          minSpend, setMinSpend,
-          minClicks, setMinClicks,
-        }}
+        thresholds={{ minSpend, setMinSpend, minClicks, setMinClicks }}
         selectedPreset={preset}
         onPresetChange={(p) => { setPreset(p); if (p !== "custom") { setFrom(""); setTo(""); } }}
         from={from} to={to} setFrom={setFrom} setTo={setTo}
@@ -242,18 +236,13 @@ export default function PerformancePage() {
         level={level}
         onLevelChange={(l) => {
           setLevel(l);
-          if (typeof window !== "undefined") {
-            try { localStorage.setItem("vam.level", l); } catch {}
-          }
+          if (typeof window !== "undefined") { try { localStorage.setItem("vam.level", l); } catch {} }
         }}
         channel={channel}
         onChannelChange={(c) => {
           setChannel(c);
-          if (typeof window !== "undefined") {
-            try { localStorage.setItem("vam.channel", c); } catch {}
-          }
+          if (typeof window !== "undefined") { try { localStorage.setItem("vam.channel", c); } catch {} }
         }}
-        // keep icon-only import/export available if you wired handlers elsewhere
         onExportClick={() => window.dispatchEvent(new CustomEvent("vam:export-campaigns"))}
         onImportClick={() => window.dispatchEvent(new CustomEvent("vam:open-import"))}
         showAccount
