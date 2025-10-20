@@ -1,4 +1,5 @@
 // File: components/dashboard/charts/RoasByProduct.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";

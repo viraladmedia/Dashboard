@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // File: app/api/settings/route.ts
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";

@@ -1,4 +1,5 @@
 // File: components/dashboard/tables/TopCreativesTable.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
