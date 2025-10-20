@@ -34,28 +34,6 @@ const DEFAULTS: Settings = {
   appearance: { theme: "light", accent: "indigo" },
 };
 
-function readSettings(): Settings {
-  const c = cookies().get(COOKIE_KEY)?.value;
-  if (!c) return DEFAULTS;
-  try {
-    const parsed = JSON.parse(c);
-    return deepMerge(DEFAULTS, parsed);
-  } catch {
-    return DEFAULTS;
-  }
-}
-
-function writeSettings(v: Settings) {
-  cookies().set({
-    name: COOKIE_KEY,
-    value: JSON.stringify(v),
-    httpOnly: false, // demo: allow client to read if needed; switch to true when using server reads only
-    sameSite: "lax",
-    path: "/",
-    maxAge: ONE_YEAR,
-  });
-}
-
 function deepMerge<T extends Record<string, any>>(a: T, b: Partial<T>): T {
   const out: any = Array.isArray(a) ? [...a] : { ...a };
   for (const k of Object.keys(b)) {
@@ -70,14 +48,24 @@ function deepMerge<T extends Record<string, any>>(a: T, b: Partial<T>): T {
 }
 
 export async function GET() {
-  const data = readSettings();
+  const jar = await cookies(); // Next.js 15: async
+  const raw = jar.get(COOKIE_KEY)?.value;
+  let data: Settings = DEFAULTS;
+  if (raw) {
+    try {
+      data = deepMerge(DEFAULTS, JSON.parse(raw));
+    } catch {
+      data = DEFAULTS;
+    }
+  }
   return NextResponse.json(data, { status: 200 });
 }
 
 export async function PATCH(req: Request) {
   try {
     const patch = (await req.json()) as Partial<Settings>;
-    // Basic validation / narrowing
+
+    // Minimal validation
     if (patch.appearance?.theme && !["light", "dark", "system"].includes(patch.appearance.theme))
       return NextResponse.json({ error: "Invalid theme" }, { status: 422 });
     if (
@@ -88,11 +76,29 @@ export async function PATCH(req: Request) {
     if (patch.profile?.email && typeof patch.profile.email !== "string")
       return NextResponse.json({ error: "Invalid email" }, { status: 422 });
 
-    const current = readSettings();
+    // Read current
+    const jar = await cookies();
+    const raw = jar.get(COOKIE_KEY)?.value;
+    const current: Settings = raw ? (() => {
+      try { return deepMerge(DEFAULTS, JSON.parse(raw)); } catch { return DEFAULTS; }
+    })() : DEFAULTS;
+
+    // Merge & respond
     const merged = deepMerge(current, patch);
-    writeSettings(merged);
-    return NextResponse.json(merged, { status: 200 });
-  } catch (e) {
+    const res = NextResponse.json(merged, { status: 200 });
+
+    // Write cookie on the response
+    res.cookies.set({
+      name: COOKIE_KEY,
+      value: JSON.stringify(merged),
+      httpOnly: false,      // set true if you only read via server
+      sameSite: "lax",
+      path: "/",
+      maxAge: ONE_YEAR,
+    });
+
+    return res;
+  } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 }
