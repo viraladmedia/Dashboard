@@ -38,6 +38,18 @@ type Normalizable = Partial<{
   roas: number;
 }>;
 
+/** Safely read an account label from heterogeneous rows without using `any` */
+function accountFromRow(x: Row): string {
+  // some sources only provide `account`, `accountId`, or `account_id`
+  const loose = x as unknown as Record<string, unknown>;
+  if (typeof x.account_name === "string" && x.account_name) return x.account_name;
+  if (typeof loose["account"] === "string" && loose["account"]) return loose["account"] as string;
+  if (typeof loose["accountId"] === "string" && loose["accountId"]) return loose["accountId"] as string;
+  if (typeof loose["account_id"] === "string" && loose["account_id"]) return loose["account_id"] as string;
+  return "";
+}
+
+
 const num = (v: unknown, d = 0) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : d;
   if (v == null) return d;
@@ -200,12 +212,8 @@ export default function PerformancePage() {
       entity,
       product: mostCommon(arr.map(x => x.product)),
       channel: mostCommon(arr.map(x => x.channel)),
-      account: mostCommon(
-        arr.map((x) => {
-          const anyx = x as any;
-          return x.account_name ?? anyx.account ?? anyx.accountId ?? anyx.account_id ?? "";
-        })
-      ),
+      account: mostCommon(arr.map(accountFromRow)),
+
       spend: n.spend, rev: n.rev, roas: n.roas,
       imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
       cpc: safePer(n.spend, n.clicks),
