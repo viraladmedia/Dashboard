@@ -79,7 +79,7 @@ export default function SettingsPage() {
 
   return (
     <div className="w-full">
-      <TopBar query={query} setQuery={setQuery} subtitle="Settings" title="Workspace Settings" showAccountInTitle={false} />
+      <TopBar subtitle="Settings" title="Workspace Settings" showAccountInTitle={false} />
 
       <Card className="mt-3 rounded-2xl border bg-white/95">
         <CardHeader className="pb-2">
