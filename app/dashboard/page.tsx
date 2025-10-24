@@ -1,10 +1,8 @@
-// File: app/dashboard/page.tsx
 "use client";
 
 import * as React from "react";
 import { useAccount } from "@/components/dashboard/AccountContext";
 import { TopBar } from "@/components/dashboard/TopBar";
-import { ControlsBar, type Preset, type Level, type Channel } from "@/components/dashboard/ControlsBar";
 import type { Row } from "@/app/types/dashboard";
 import { aggregate, currency, fmt, groupBy } from "@/lib/metrics";
 import {
@@ -13,6 +11,13 @@ import {
 import {
   LineChart as RLineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import { Input } from "@/components/ui/input";
+import { Search } from "lucide-react";
+
+/** Local union types used on this page */
+type Level = "ad" | "adset" | "campaign";
+type Channel = "all" | "meta" | "tiktok" | "google";
+type Preset = "last_24h" | "last_48h" | "last_7d" | "last_30d" | "last_60d" | "last_90d" | "custom";
 
 export default function OverviewPage() {
   const { accountId } = useAccount();
@@ -20,8 +25,9 @@ export default function OverviewPage() {
   // Campaign-level only (per requirement)
   const [level] = React.useState<Level>("campaign");
   const [channel, setChannel] = React.useState<Channel>("all");
-  const [preset, setPreset] = React.useState<Preset>("last_24h");
-  const [from, setFrom] = React.useState(""); const [to, setTo] = React.useState("");
+  const [preset, setPreset] = React.useState<Preset>("last_30d"); // default to last 30 days
+  const [from, setFrom] = React.useState(""); 
+  const [to, setTo] = React.useState("");
 
   const [query, setQuery] = React.useState("");
   const [rows, setRows] = React.useState<Row[]>([]);
@@ -93,30 +99,21 @@ export default function OverviewPage() {
 
   return (
     <div className="w-full">
-      <TopBar query={query} setQuery={setQuery} subtitle="Overview" title="Campaign Performance" />
+      {/* Top bar: no query props anymore */}
+      <TopBar subtitle="Overview" title="Campaign Performance" />
 
-      {/* Reuse the exact same ControlsBar, but minimal:
-         - account + channel + date presets
-         - NO level (fixed to campaign)
-         - NO thresholds
-         - NO import/export (clean)
-      */}
-      <ControlsBar
-        thresholds={{ minSpend: 0, setMinSpend: () => {}, minClicks: 0, setMinClicks: () => {} }}
-        selectedPreset={preset}
-        onPresetChange={(p) => { setPreset(p); if (p !== "custom") { setFrom(""); setTo(""); } }}
-        from={from} to={to} setFrom={setFrom} setTo={setTo}
-        onSync={fetchRows}
-        syncing={loading}
-        level={level} onLevelChange={() => {}}
-        channel={channel} onChannelChange={setChannel}
-        showAccount
-        showLevel={true}
-        showChannel
-        showThresholds={false}
-        showImportExport={true}
-        allowCustomRange
-      />
+      {/* Lightweight search just under the bar */}
+      <div className="my-3">
+        <div className="relative max-w-xl">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search campaign, product, channel, or account…"
+            className="pl-8"
+          />
+        </div>
+      </div>
 
       {/* KPIs */}
       <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6 mb-5">
@@ -204,7 +201,7 @@ function Stat({ title, value }: { title: string; value: React.ReactNode }) {
   );
 }
 
-function labelForPreset(p: "last_24h" | "last_48h" | "last_7d" | "last_30d" | "last_60d" | "last_90d" | "custom") {
+function labelForPreset(p: Preset) {
   switch (p) {
     case "last_24h": return "Last 24 hours";
     case "last_48h": return "Last 48 hours";
