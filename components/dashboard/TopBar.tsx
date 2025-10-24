@@ -6,21 +6,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { ChevronDown, LogOut, Search, Settings, User } from "lucide-react";
+import { ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { useAccount } from "@/components/dashboard/AccountContext";
+import { supabase } from "@/lib/supabase/client";
 
 export function TopBar({
-  query, setQuery, title, subtitle,
-  showAccountInTitle = true, showAccountIdInSubtitle = true,
+  title, subtitle,
+  showAccountInTitle = true,
+  showAccountIdInSubtitle = true,
 }: {
-  query: string;
-  setQuery: (v: string) => void;
-  title?: string;
-  subtitle?: string;
-  showAccountInTitle?: boolean;
-  showAccountIdInSubtitle?: boolean;
+  title?: string; subtitle?: string;
+  showAccountInTitle?: boolean; showAccountIdInSubtitle?: boolean;
 }) {
   const { accountId, accountLabel } = useAccount();
   const [mounted, setMounted] = React.useState(false);
@@ -33,6 +30,17 @@ export function TopBar({
   const computedSubtitle = showAccountIdInSubtitle
     ? (mounted ? (accountId === "all" ? "All Accounts" : `Account ID: ${accountId}`) : "All Accounts")
     : (subtitle ?? "Dashboard");
+
+  const initials = React.useMemo(() => {
+    const s = (accountLabel || "Viral Ad Media").trim();
+    const parts = s.split(/\s+/).slice(0, 2);
+    return parts.map(p => p[0]?.toUpperCase() ?? "").join("") || "VA";
+  }, [accountLabel]);
+
+  const onLogout = async () => {
+    try { await supabase.auth.signOut(); } catch {}
+    window.location.href = "/login";
+  };
 
   return (
     <div className="sticky top-0 z-20 -mx-2 sm:mx-0 bg-white/70 backdrop-blur border-b border-white/60">
@@ -47,39 +55,39 @@ export function TopBar({
           </h1>
         </div>
 
-        {/* Center: Search */}
-        <div className="flex-1 min-w-[180px] max-w-[640px] ml-auto">
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search product, campaign, ad set, ad, or account…"
-              className="pl-8"
-            />
-          </div>
-        </div>
-
-        {/* Right: Live + Profile */}
-        <div className="flex items-center gap-2">
+        {/* Right: Profile menu only (thresholds moved to ControlsBar) */}
+        <div className="ml-auto flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className={cn("inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-2.5 py-1.5")}>
+              <button
+                aria-label="Open profile menu"
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border border-white/60",
+                  "bg-white/80 px-2.5 py-1.5 hover:bg-white transition"
+                )}
+              >
                 <Avatar className="h-7 w-7">
                   <AvatarImage src="/avatar.png" alt="Profile" />
-                  <AvatarFallback>VA</AvatarFallback>
+                  <AvatarFallback>{initials}</AvatarFallback>
                 </Avatar>
                 <ChevronDown className="h-4 w-4 text-slate-500" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem asChild>
-                <a href="/dashboard/overview" className="flex items-center gap-2"><User className="h-4 w-4" /> Profile</a>
+                <a href="/dashboard/profile" className="flex items-center gap-2">
+                  <User className="h-4 w-4" /> Profile
+                </a>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <a href="/dashboard/settings" className="flex items-center gap-2"><Settings className="h-4 w-4" /> Account Settings</a>
+                <a href="/dashboard/settings" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" /> Account Settings
+                </a>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => alert("Hook up auth sign-out")} className="flex items-center gap-2">
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="flex items-center gap-2 text-red-600 focus:text-red-700"
+              >
                 <LogOut className="h-4 w-4" /> Logout
               </DropdownMenuItem>
             </DropdownMenuContent>

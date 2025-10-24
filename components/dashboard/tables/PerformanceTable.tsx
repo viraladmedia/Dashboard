@@ -1,115 +1,114 @@
 // File: components/dashboard/tables/PerformanceTable.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { currency, fmt } from "@/lib/metrics";
-import type { Thresholds } from "@/lib/metrics";
-import type { Row, Level } from "@/app/types/dashboard";
-import { aggregate, statusFor } from "@/lib/metrics";
-import { Settings2, Rocket, Trash2 } from "lucide-react";
 
-function StatusBadge({ s }: { s: ReturnType<typeof statusFor> }) {
-  const styles: Record<string, string> = {
-    Scale: "bg-emerald-500/15 text-emerald-600 border-emerald-400/40",
-    Optimize: "bg-amber-500/15 text-amber-600 border-amber-400/40",
-    Kill: "bg-rose-500/15 text-rose-600 border-rose-400/40",
-  };
-  const Icon = s === "Scale" ? Rocket : s === "Kill" ? Trash2 : Settings2;
-  return <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${styles[s]}`}><Icon className="h-3.5 w-3.5" /> {s}</span>;
+import * as React from "react";
+import { currency, fmt } from "@/lib/metrics";
+import { useThresholds } from "@/components/dashboard/ThresholdsContext";
+
+export type RowAgg = {
+  entity: string;
+  product?: string;
+  channel?: string;
+  account?: string;
+  imps?: number;
+  clicks?: number;
+  leads?: number;
+  checkouts?: number;
+  purchases?: number;
+  spend: number;
+  rev: number;
+  roas: number | null;
+  cpc: number | null;
+  cpl: number | null;
+  cpa: number | null;
+  cpcb: number | null;
+  ctr: number | null;
+};
+
+function decide(r: RowAgg, t: ReturnType<typeof useThresholds>["thresholds"]) {
+  const spendOK = (r.spend ?? 0) >= (t.minSpend ?? 0);
+  const clicksOK = (r.clicks ?? 0) >= (t.minClicks ?? 0);
+  const hasVol = spendOK && clicksOK;
+
+  const roas = r.roas ?? 0;
+  const cpa = r.cpa ?? Infinity;
+
+  if (hasVol && (roas <= t.roasKill || cpa >= t.cpaKill)) return "Kill";
+  if (hasVol && (roas >= t.roasScale && cpa <= t.cpaGood)) return "Scale";
+  return "Optimize";
 }
 
-export function PerformanceTable({
-  groups, level, roasKill, roasScale,
-}: {
-  groups: Array<any>;
-  level: Level;
-  roasKill: number; roasScale: number;
-}) {
+function badge(status: ReturnType<typeof decide>) {
+  const styles =
+    status === "Scale"
+      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+      : status === "Kill"
+      ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+      : "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  return <span className={`px-2 py-0.5 rounded-full text-xs ${styles}`}>{status}</span>;
+}
+
+export function PerformanceTable({ rows, title }: { rows: RowAgg[]; title: string }) {
+  const { thresholds } = useThresholds();
+
   return (
-    <Card className="rounded-2xl border-2 border-white/40 bg-white/90 backdrop-blur overflow-hidden">
-      <CardHeader className="pb-2 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm font-semibold text-slate-700">
-          {level === "ad" ? "Ad-Level Performance" : level === "adset" ? "Ad Set–Level Performance" : "Campaign-Level Performance"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pt-0 overflow-x-auto">
-        <table className="w-full text-sm table-fixed">
-          <colgroup>
-            <col className="w-[110px]" />
-            <col className="w-[170px]" />
-            <col className="w-[240px]" />
-            <col className="w-[110px]" />
-            <col className="w-[120px]" />
-            <col className="w-[80px]" />
-            <col className="w-[90px]" />
-            <col className="w-[90px]" />
-            <col className="w-[90px]" />
-            <col className="w-[90px]" />
-            <col className="w-[80px]" />
-            <col className="w-[80px]" />
-            <col className="w-[90px]" />
-            <col className="w-[100px]" />
-          </colgroup>
+    <div className="rounded-2xl border bg-white/95">
+      <div className="pb-2 px-3 pt-3 text-sm font-semibold text-slate-700">{title}</div>
+      <div className="px-3 pb-3 overflow-x-auto">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-600 border-b">
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2 pr-4">Product</th>
-              <th className="py-2 pr-4">{level === "ad" ? "Ad" : level === "adset" ? "Ad Set" : "Campaign"} <span className="text-[11px] text-slate-400 ml-1">{level !== "campaign" ? "(incl. campaign)" : ""}</span></th>
-              <th className="py-2 pr-4">Spend</th>
-              <th className="py-2 pr-4">Revenue</th>
-              <th className="py-2 pr-4">ROAS</th>
-              <th className="py-2 pr-4">CPC</th>
-              <th className="py-2 pr-4">CPL</th>
-              <th className="py-2 pr-4">CPA</th>
-              <th className="py-2 pr-4">CPCB</th>
-              <th className="py-2 pr-4">Clicks</th>
-              <th className="py-2 pr-4">Leads</th>
-              <th className="py-2 pr-4">Checkouts</th>
-              <th className="py-2 pr-4">Purchases</th>
+            <tr className="text-left text-slate-500">
+              <th className="py-2 pr-3">Status</th>
+              <th className="py-2 pr-3">Name</th>
+              <th className="py-2 pr-3">Product</th>
+              <th className="py-2 pr-3">Channel</th>
+              <th className="py-2 pr-3">Account</th>
+              <th className="py-2 pr-3">Impr.</th>
+              <th className="py-2 pr-3">Clicks</th>
+              <th className="py-2 pr-3">Leads</th>
+              <th className="py-2 pr-3">Checkouts</th>
+              <th className="py-2 pr-3">Purchases</th>
+              <th className="py-2 pr-3">Spend</th>
+              <th className="py-2 pr-3">Revenue</th>
+              <th className="py-2 pr-3">ROAS</th>
+              <th className="py-2 pr-3">CPC</th>
+              <th className="py-2 pr-3">CPL</th>
+              <th className="py-2 pr-3">CPA</th>
+              <th className="py-2 pr-0">CPCB</th>
             </tr>
           </thead>
           <tbody>
-            {groups.map((g: any, i: number) => (
-              <tr key={g.key + i} className="border-b hover:bg-gradient-to-r hover:from-fuchsia-50/60 hover:to-cyan-50/60">
-                <td className="py-2 pr-4"><StatusBadge s={g.status} /></td>
-                <td className="py-2 pr-4">
-                  <div className="font-semibold text-slate-800 truncate">{g.product}</div>
-                  <div className="text-[11px] text-slate-500 truncate">{g.channel}</div>
-                </td>
-                <td className="py-2 pr-4">
-                  {level === "ad" && (
-                    <div className="truncate">
-                      <div className="text-slate-800">{g.ad}</div>
-                      <div className="text-[11px] text-slate-500">{g.campaign}</div>
-                    </div>
-                  )}
-                  {level === "adset" && (
-                    <div className="truncate">
-                      <div className="text-slate-800">{g.adset}</div>
-                      <div className="text-[11px] text-slate-500">{g.campaign}</div>
-                    </div>
-                  )}
-                  {level === "campaign" && <div className="truncate text-slate-800">{g.campaign}</div>}
-                </td>
-                <td className="py-2 pr-4 font-medium">{currency(g.spend)}</td>
-                <td className="py-2 pr-4 font-medium">{currency(g.revenue)}</td>
-                <td className={`py-2 pr-4 font-semibold ${g.roas != null && g.roas >= roasScale ? "text-emerald-600" : g.roas != null && g.roas < roasKill ? "text-rose-600" : "text-slate-700"}`}>{g.roas != null ? `${g.roas.toFixed(2)}x` : "–"}</td>
-                <td className="py-2 pr-4">{currency(g.cpc)}</td>
-                <td className="py-2 pr-4">{currency(g.cpl)}</td>
-                <td className="py-2 pr-4">{currency(g.cpa)}</td>
-                <td className="py-2 pr-4">{currency(g.cpcb)}</td>
-                <td className="py-2 pr-4">{fmt(g.clicks, 0)}</td>
-                <td className="py-2 pr-4">{fmt(g.leads, 0)}</td>
-                <td className="py-2 pr-4">{fmt(g.checkouts, 0)}</td>
-                <td className="py-2 pr-4">{fmt(g.purchases, 0)}</td>
-              </tr>
-            ))}
-            {!groups.length && (
-              <tr><td colSpan={14} className="py-10 text-center text-slate-500">No data for current filters.</td></tr>
+            {rows.map((r, i) => {
+              const st = decide(r, thresholds);
+              return (
+                <tr key={i} className="border-t">
+                  <td className="py-2 pr-3">{badge(st)}</td>
+                  <td className="py-2 pr-3">{r.entity}</td>
+                  <td className="py-2 pr-3">{r.product || "—"}</td>
+                  <td className="py-2 pr-3">{r.channel || "—"}</td>
+                  <td className="py-2 pr-3">{r.account || "—"}</td>
+                  <td className="py-2 pr-3">{fmt(r.imps)}</td>
+                  <td className="py-2 pr-3">{fmt(r.clicks)}</td>
+                  <td className="py-2 pr-3">{fmt(r.leads)}</td>
+                  <td className="py-2 pr-3">{fmt(r.checkouts)}</td>
+                  <td className="py-2 pr-3">{fmt(r.purchases)}</td>
+                  <td className="py-2 pr-3">{currency(r.spend)}</td>
+                  <td className="py-2 pr-3">{currency(r.rev)}</td>
+                  <td className="py-2 pr-3">{r.roas == null ? "–" : `${r.roas.toFixed(2)}x`}</td>
+                  <td className="py-2 pr-3">{r.cpc == null ? "–" : currency(r.cpc)}</td>
+                  <td className="py-2 pr-3">{r.cpl == null ? "–" : currency(r.cpl)}</td>
+                  <td className="py-2 pr-3">{r.cpa == null ? "–" : currency(r.cpa)}</td>
+                  <td className="py-2 pr-0">{r.cpcb == null ? "–" : currency(r.cpcb)}</td>
+                </tr>
+              );
+            })}
+            {!rows.length && (
+              <tr><td colSpan={17} className="py-6 text-center text-slate-500">No data for this selection.</td></tr>
             )}
           </tbody>
         </table>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

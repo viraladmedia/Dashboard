@@ -18,4 +18,9 @@ export type Row = {
   revenue: number;
   account_id?: string | null;
   account_name?: string | null;
+  placement?: string;
+  platform?: string;
+  device?: string;
+  country?: string;
+  age?: string;
 };

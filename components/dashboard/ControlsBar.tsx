@@ -6,14 +6,15 @@ import * as React from "react";
 import { useAccount } from "@/components/dashboard/AccountContext";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { Calendar, RefreshCcw, Upload, Download, ChevronDown } from "lucide-react";
+import { Calendar, RefreshCcw, Upload, Download, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { useThresholds } from "@/components/dashboard/ThresholdsContext";
 
 /** Shared types */
 export type Preset =
@@ -21,7 +22,7 @@ export type Preset =
 export type Level = "ad" | "adset" | "campaign";
 export type Channel = "all" | "meta" | "tiktok" | "google";
 
-/** Minimal thresholds (trimmed): only the two that actually filter */
+/** Minimal thresholds prop kept for page-level filters */
 type Thresholds = {
   minSpend: number; setMinSpend: (v: number) => void;
   minClicks: number; setMinClicks: (v: number) => void;
@@ -68,6 +69,7 @@ export function ControlsBar({
   allowCustomRange?: boolean;
 }) {
   const { accountId, accountLabel, setAccount } = useAccount();
+  const { thresholds: tctx, setThresholds } = useThresholds();
 
   // Accounts for the selector (lives in ControlsBar now)
   const [accounts, setAccounts] = React.useState<Account[]>([{ key: "all", label: "All Accounts" }]);
@@ -101,15 +103,12 @@ export function ControlsBar({
   const onChangeAccount = (val: string) => {
     const lbl = accounts.find(a => a.key === val)?.label || (val === "all" ? "All Accounts" : val);
     setAccount(val, lbl);
-    // No direct fetch here; page reacts to accountId change and refetches.
+    // Page reacts via context and refetches.
   };
 
   const onPickPreset = (val: Preset) => {
     onPresetChange(val);
-    if (val !== "custom") {
-      // Clear custom dates when leaving custom
-      setFrom(""); setTo("");
-    }
+    if (val !== "custom") { setFrom(""); setTo(""); }
   };
 
   const onChangeFrom = (v: string) => {
@@ -120,6 +119,10 @@ export function ControlsBar({
     setTo(v);
     if (selectedPreset !== "custom") onPresetChange("custom");
   };
+
+  // Keep minSpend/minClicks in sync between page state and global thresholds context
+  const setMinSpendBoth = (v: number) => { thresholds.setMinSpend(v); setThresholds({ minSpend: v }); };
+  const setMinClicksBoth = (v: number) => { thresholds.setMinClicks(v); setThresholds({ minClicks: v }); };
 
   return (
     <div className="mb-3 rounded-xl border bg-white/90 p-2">
@@ -207,8 +210,71 @@ export function ControlsBar({
           </div>
         )}
 
+        {/* Spacer pushes right controls */}
+        <div className="flex-1" />
+
+        {/* Thresholds button (moved here from TopBar; same look & feel) */}
+        {showThresholds && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="Open thresholds"
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full border border-white/60",
+                  "bg-white/80 px-2.5 py-1.5 hover:bg-white transition"
+                )}
+              >
+                <SlidersHorizontal className="h-4 w-4 text-slate-600" />
+                <span className="hidden sm:inline text-sm text-slate-700">Thresholds</span>
+                <ChevronDown className="h-4 w-4 text-slate-500" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72 p-2">
+              <div className="text-xs font-semibold text-slate-600 px-1 pb-1">Decision thresholds</div>
+
+              <Field
+                label="ROAS — Kill at ≤"
+                value={tctx.roasKill}
+                onChange={(v) => setThresholds({ roasKill: v })}
+                step="0.1"
+              />
+              <Field
+                label="ROAS — Scale at ≥"
+                value={tctx.roasScale}
+                onChange={(v) => setThresholds({ roasScale: v })}
+                step="0.1"
+              />
+              <Field
+                label="CPA — Kill at ≥"
+                value={tctx.cpaKill}
+                onChange={(v) => setThresholds({ cpaKill: v })}
+              />
+              <Field
+                label="CPA — Good at ≤"
+                value={tctx.cpaGood}
+                onChange={(v) => setThresholds({ cpaGood: v })}
+              />
+              <DropdownMenuSeparator />
+              <Field
+                label="Min Spend (USD)"
+                value={thresholds.minSpend}
+                onChange={setMinSpendBoth}
+              />
+              <Field
+                label="Min Clicks"
+                value={thresholds.minClicks}
+                onChange={setMinClicksBoth}
+              />
+
+              <div className="px-1 pt-2 text-[11px] text-slate-500">
+                These rules drive <b>Scale / Optimize / Kill</b> badges in tables.
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         {/* Sync */}
-        <Button size="sm" onClick={onSync} disabled={syncing} className="ml-auto">
+        <Button size="sm" onClick={onSync} disabled={syncing}>
           <RefreshCcw className={cn("h-4 w-4", syncing ? "animate-spin" : "")} />
           <span className="sr-only">Sync</span>
         </Button>
@@ -225,32 +291,27 @@ export function ControlsBar({
           </Button>
         )}
       </div>
-
-      {/* Minimal thresholds */}
-      {showThresholds && (
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-          <NumberField value={thresholds.minSpend} onChange={thresholds.setMinSpend} placeholder="Min Spend" />
-          <NumberField value={thresholds.minClicks} onChange={thresholds.setMinClicks} placeholder="Min Clicks" />
-        </div>
-      )}
     </div>
   );
 }
 
-function NumberField({
-  value, onChange, placeholder,
-}: { value: number; onChange: (v: number) => void; placeholder: string }) {
+function Field({
+  label, value, onChange, step = "1",
+}: { label: string; value: number; onChange: (v: number) => void; step?: string }) {
   return (
-    <Input
-      inputMode="decimal"
-      value={Number.isFinite(value) ? value : ""}
-      onChange={(e) => {
-        const v = parseFloat(e.target.value || "0");
-        onChange(Number.isFinite(v) ? v : 0);
-      }}
-      placeholder={placeholder}
-      className="h-9"
-    />
+    <div className="px-1 py-1.5">
+      <div className="text-[11px] text-slate-600 mb-1">{label}</div>
+      <Input
+        inputMode="decimal"
+        step={step}
+        value={Number.isFinite(value) ? value : ""}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value || "0");
+          onChange(Number.isFinite(v) ? v : 0);
+        }}
+        className="h-8"
+      />
+    </div>
   );
 }
 
