@@ -33,10 +33,16 @@ const safePer = (num?: number, den?: number) =>
   !num || !den || den === 0 ? null : num / den;
 
 type Normalizable = Partial<{
-  ad_spend: number; spend: number; ad_spend_usd: number;
+  ad_spend: number;
+  spend: number;
+  ad_spend_usd: number;
   revenue: number;
-  impressions: number; clicks: number; leads: number; checkouts: number; purchases: number;
-  roas: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  checkouts: number;
+  purchases: number;
+  roas: number; // note: no null in the type
 }>;
 
 const num = (v: unknown, d = 0) => {
@@ -54,9 +60,14 @@ function norm(row: Normalizable) {
   const leads = num(row.leads, 0);
   const checkouts = num(row.checkouts, 0);
   const purchases = num(row.purchases, 0);
-  const roas = spend > 0 ? rev / spend : (typeof row.roas === "number" ? row.roas : null);
+
+  // If we can compute ROAS, return a number; otherwise return undefined (NOT null)
+  const roas: number | undefined =
+    spend > 0 ? rev / spend : (typeof row.roas === "number" ? row.roas : undefined);
+
   return { spend, rev, imps, clicks, leads, checkouts, purchases, roas };
 }
+
 
 const getFromLS = <T,>(key: string, fallback: T): T => {
   if (typeof window === "undefined") return fallback;
@@ -310,7 +321,7 @@ export default function PerformancePage() {
       const a = aggregate(arr);
       const n = norm(a as unknown as Normalizable);
       const imps = a.impressions ?? 0;
-      const dec = decide(n);
+      const dec = decide({ ...n, roas: n.roas ?? undefined }); // <-- ensure no `null`
       return {
         entity,
         product: mostCommon(arr.map(x => x.product)),
