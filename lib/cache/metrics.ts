@@ -1,4 +1,6 @@
 // File: lib/cache/metrics.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import type { Row } from "@/app/types/dashboard";
 import { getServiceClient } from "@/lib/supabase/service";
 

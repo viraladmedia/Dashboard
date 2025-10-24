@@ -384,7 +384,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Strip internal helpers before sending
-    const cleaned = baseMerged.map(({ _key, _level, ...rest }) => rest);
+    const cleaned = baseMerged.map((r) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _key: _k, _level: _l, ...rest } = r;
+      return rest;
+    });
+
     return NextResponse.json(cleaned);
   } catch (e) {
     return NextResponse.json({ error: `Meta API error: ${(e as Error).message}` }, { status: 500 });
