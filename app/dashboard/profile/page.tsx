@@ -4,7 +4,7 @@
 "use client";
 
 import * as React from "react";
-import { supabase } from "@/lib/supabase/client";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 import { TopBar } from "@/components/dashboard/TopBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,27 +24,55 @@ export default function ProfilePage() {
     let mounted = true;
     (async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      setErr(null);
+
+      const sb = getBrowserSupabase();
+      if (!sb) {
+        if (mounted) setErr("Supabase client unavailable.");
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await sb.auth.getUser();
       if (!mounted) return;
-      if (user) {
-        setEmail(user.email ?? "");
-        setName((user.user_metadata as any)?.name ?? "");
-        setAvatarUrl((user.user_metadata as any)?.avatar_url ?? "");
+
+      if (error) {
+        setErr(error.message);
+      } else if (data?.user) {
+        const u = data.user;
+        setEmail(u.email ?? "");
+        setName((u.user_metadata as any)?.name ?? "");
+        setAvatarUrl((u.user_metadata as any)?.avatar_url ?? "");
       }
       setLoading(false);
     })();
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null); setMsg(null);
+    setErr(null);
+    setMsg(null);
     setSaving(true);
-    const { error } = await supabase.auth.updateUser({
+
+    const sb = getBrowserSupabase();
+    if (!sb) {
+      setErr("Supabase client unavailable.");
+      setSaving(false);
+      return;
+    }
+
+    const { error } = await sb.auth.updateUser({
       data: { name, avatar_url: avatarUrl },
     });
+
     setSaving(false);
-    if (error) { setErr(error.message); return; }
+    if (error) {
+      setErr(error.message);
+      return;
+    }
     setMsg("Profile updated.");
   }
 
@@ -98,10 +126,7 @@ export default function ProfilePage() {
                 <Button type="submit" disabled={saving || loading}>
                   {saving ? "Saving…" : "Save changes"}
                 </Button>
-                <a
-                  href="/reset-password"
-                  className="text-sm text-indigo-600 hover:underline"
-                >
+                <a href="/reset-password" className="text-sm text-indigo-600 hover:underline">
                   Reset password
                 </a>
               </div>
@@ -129,22 +154,20 @@ export default function ProfilePage() {
                 />
               </div>
               <div className="min-w-0">
-                <div className="font-semibold text-slate-800 truncate">{name || "Your name"}</div>
-                <div className="text-xs text-slate-500 truncate">{email || "you@company.com"}</div>
+                <div className="font-semibold text-slate-800 truncate">
+                  {name || "Your name"}
+                </div>
+                <div className="text-xs text-slate-500 truncate">
+                  {email || "you@company.com"}
+                </div>
               </div>
             </div>
 
             <div className="mt-4 grid gap-2">
-              <a
-                className="text-sm text-indigo-600 hover:underline"
-                href="/dashboard/settings"
-              >
+              <a className="text-sm text-indigo-600 hover:underline" href="/dashboard/settings">
                 Open account settings →
               </a>
-              <a
-                className="text-sm text-slate-600 hover:underline"
-                href="/dashboard"
-              >
+              <a className="text-sm text-slate-600 hover:underline" href="/dashboard">
                 Back to dashboard →
               </a>
             </div>

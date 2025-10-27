@@ -1,8 +1,9 @@
+// File: app/dashboard/attendance/page.tsx
 "use client";
 
 import * as React from "react";
 import { TopBar } from "@/components/dashboard/TopBar";
-import { supabase } from "@/lib/supabase/client";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,7 @@ const toLocalDT = (iso: string) => {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   // yyyy-MM-ddTHH:mm
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 const byId = <T extends { id: string }>(arr: T[]) => {
   const m = new Map<string, T>(); arr.forEach(x => m.set(x.id, x)); return m;
@@ -81,6 +82,9 @@ function Confirm({
 /* ---------------- Page ---------------- */
 export default function AttendancePage() {
   const [tab, setTab] = React.useState<TabKey>("overview");
+
+  // Supabase browser client (memoized)
+  const sb = React.useMemo(() => getBrowserSupabase(), []);
 
   // Data
   const [teachers, setTeachers] = React.useState<Teacher[]>([]);
@@ -158,31 +162,33 @@ export default function AttendancePage() {
 
   /* ------------ Loaders (views recommended for RLS convenience) ------------ */
   const reload = React.useCallback(async () => {
+    if (!sb) return;
     const [t, s, ss, a] = await Promise.all([
-      supabase.from("my_teachers").select("*").order("created_at", { ascending: false }),
-      supabase.from("my_students").select("*").order("created_at", { ascending: false }),
-      supabase.from("my_sessions").select("*").order("starts_at", { ascending: false }),
-      supabase.from("my_attendance").select("*").order("noted_at", { ascending: false }),
+      sb.from("my_teachers").select("*").order("created_at", { ascending: false }),
+      sb.from("my_students").select("*").order("created_at", { ascending: false }),
+      sb.from("my_sessions").select("*").order("starts_at", { ascending: false }),
+      sb.from("my_attendance").select("*").order("noted_at", { ascending: false }),
     ]);
-    if (!t.error) setTeachers((t.data || []) as Teacher[]);
-    if (!s.error) setStudents((s.data || []) as Student[]);
-    if (!ss.error) setSessions((ss.data || []) as Session[]);
-    if (!a.error) setAttendance((a.data || []) as Attendance[]);
-  }, []);
+    if (!t.error && t.data) setTeachers(t.data as Teacher[]);
+    if (!s.error && s.data) setStudents(s.data as Student[]);
+    if (!ss.error && ss.data) setSessions(ss.data as Session[]);
+    if (!a.error && a.data) setAttendance(a.data as Attendance[]);
+  }, [sb]);
 
   React.useEffect(() => { reload(); }, [reload]);
 
   // Realtime subscriptions for all tables
   React.useEffect(() => {
-    const channel = supabase.channel("attendance-bus")
+    if (!sb) return;
+    const channel = sb.channel("attendance-bus")
       .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, reload)
       .on("postgres_changes", { event: "*", schema: "public", table: "students" }, reload)
       .on("postgres_changes", { event: "*", schema: "public", table: "teacher_students" }, reload)
       .on("postgres_changes", { event: "*", schema: "public", table: "sessions" }, reload)
       .on("postgres_changes", { event: "*", schema: "public", table: "attendance" }, reload)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [reload]);
+    return () => { sb.removeChannel(channel); };
+  }, [sb, reload]);
 
   /* ------------ Derived ------------ */
   const tMap = React.useMemo(() => byId(teachers), [teachers]);
@@ -229,15 +235,17 @@ export default function AttendancePage() {
 
   /* ------------ Adds (same as before) ------------ */
   const addTeacher = async () => {
+    if (!sb) return;
     const name = tName.trim(); if (!name) return;
-    await supabase.from("teachers").insert({ name, email: tEmail || null });
+    await sb.from("teachers").insert({ name, email: tEmail || null });
     setTName(""); setTEmail(""); setOpenTeacher(false);
   };
 
   const addStudentRPC = async () => {
+    if (!sb) return;
     if (!sTeacherId) return;
     const name = sName.trim(); if (!name) return;
-    const { error } = await supabase.rpc("create_student_and_link", {
+    const { error } = await sb.rpc("create_student_and_link", {
       p_teacher_id: sTeacherId,
       p_name: name,
       p_email: sEmail || null,
@@ -252,9 +260,10 @@ export default function AttendancePage() {
   };
 
   const addSessionRPC = async () => {
+    if (!sb) return;
     if (!sessTeacherId || !sessStartsAt) return;
     const startsAt = new Date(sessStartsAt).toISOString();
-    const { error } = await supabase.rpc("create_session_owned", {
+    const { error } = await sb.rpc("create_session_owned", {
       p_teacher_id: sessTeacherId,
       p_title: sessTitle || null,
       p_starts_at: startsAt,
@@ -264,8 +273,9 @@ export default function AttendancePage() {
   };
 
   const addAttendance = async () => {
+    if (!sb) return;
     if (!attendSessionId || !attendStudentId) return;
-    const { error } = await supabase.from("attendance").insert({
+    const { error } = await sb.from("attendance").insert({
       session_id: attendSessionId,
       student_id: attendStudentId,
       status: attendStatus,
@@ -280,27 +290,30 @@ export default function AttendancePage() {
     setEditTeacherId(t.id); setEditTName(t.name); setEditTEmail(t.email ?? ""); setOpenEditTeacher(true);
   };
   const saveEditTeacher = async () => {
+    if (!sb) return;
     if (!editTeacherId) return;
     const name = editTName.trim(); const email = editTEmail.trim() || null;
-    const { error } = await supabase.from("teachers").update({ name, email }).eq("id", editTeacherId);
+    const { error } = await sb.from("teachers").update({ name, email }).eq("id", editTeacherId);
     if (error) { console.error(error); return; }
     setOpenEditTeacher(false); setEditTeacherId(""); setEditTName(""); setEditTEmail("");
   };
 
   const onOpenEditStudent = async (s: Student) => {
+    if (!sb) return;
     setEditStudentId(s.id);
     setEditSName(s.name); setEditSEmail(s.email ?? "");
     setEditSProgram(s.program ?? ""); setEditSDuration(s.duration_weeks ?? "");
     setEditSPerWeek(s.sessions_per_week ?? ""); setEditSClass(s.class_name ?? "");
 
-    const { data } = await supabase.from("teacher_students").select("teacher_id").eq("student_id", s.id).limit(1);
-    setEditSTeacherId(data && data.length ? data[0].teacher_id : "");
+    const { data } = await sb.from("teacher_students").select("teacher_id").eq("student_id", s.id).limit(1);
+    setEditSTeacherId(data && data.length ? (data[0] as any).teacher_id : "");
 
     setOpenEditStudent(true);
   };
   const saveEditStudent = async () => {
+    if (!sb) return;
     if (!editStudentId) return;
-    const { error: e1 } = await supabase.from("students").update({
+    const { error: e1 } = await sb.from("students").update({
       name: editSName.trim(),
       email: editSEmail.trim() || null,
       program: editSProgram.trim() || null,
@@ -311,8 +324,8 @@ export default function AttendancePage() {
     if (e1) { console.error(e1); return; }
 
     if (editSTeacherId) {
-      await supabase.from("teacher_students").delete().eq("student_id", editStudentId);
-      const { error: e2 } = await supabase.from("teacher_students").insert({ teacher_id: editSTeacherId, student_id: editStudentId });
+      await sb.from("teacher_students").delete().eq("student_id", editStudentId);
+      const { error: e2 } = await sb.from("teacher_students").insert({ teacher_id: editSTeacherId, student_id: editStudentId });
       if (e2) { console.error(e2); return; }
     }
     setOpenEditStudent(false);
@@ -328,13 +341,14 @@ export default function AttendancePage() {
     setOpenEditSession(true);
   };
   const saveEditSession = async () => {
+    if (!sb) return;
     if (!editSessionId) return;
     const payload: Partial<Session> = {
       teacher_id: editSessTeacherId || null,
       title: editSessTitle || null,
       starts_at: new Date(editSessStartsAt).toISOString(),
     };
-    const { error } = await supabase.from("sessions").update(payload).eq("id", editSessionId);
+    const { error } = await sb.from("sessions").update(payload).eq("id", editSessionId);
     if (error) { console.error(error); return; }
     setOpenEditSession(false);
     setEditSessionId(""); setEditSessTeacherId(""); setEditSessTitle(""); setEditSessStartsAt("");
@@ -348,19 +362,20 @@ export default function AttendancePage() {
     setOpenEditAttendance(true);
   };
   const saveEditAttendance = async () => {
+    if (!sb) return;
     if (!editAttendKey) return;
     // If session or student changed, we must delete old PK row and insert new one
     const changedKey = editAttendKey.session_id !== editAttendSessionId || editAttendKey.student_id !== editAttendStudentId;
     if (changedKey) {
-      const { error: delErr } = await supabase.from("attendance").delete()
+      const { error: delErr } = await sb.from("attendance").delete()
         .match({ session_id: editAttendKey.session_id, student_id: editAttendKey.student_id });
       if (delErr) { console.error(delErr); return; }
-      const { error: insErr } = await supabase.from("attendance").insert({
+      const { error: insErr } = await sb.from("attendance").insert({
         session_id: editAttendSessionId, student_id: editAttendStudentId, status: editAttendStatus,
       });
       if (insErr) { console.error(insErr); return; }
     } else {
-      const { error } = await supabase.from("attendance").update({ status: editAttendStatus })
+      const { error } = await sb.from("attendance").update({ status: editAttendStatus })
         .match({ session_id: editAttendSessionId, student_id: editAttendStudentId });
       if (error) { console.error(error); return; }
     }
@@ -370,20 +385,24 @@ export default function AttendancePage() {
 
   /* ------------ DELETE with confirmation ------------ */
   const doDeleteTeacher = async (id?: string) => {
+    if (!sb) return;
     if (!id) return;
-    await supabase.from("teachers").delete().eq("id", id);
+    await sb.from("teachers").delete().eq("id", id);
   };
   const doDeleteStudent = async (id?: string) => {
+    if (!sb) return;
     if (!id) return;
-    await supabase.from("students").delete().eq("id", id);
+    await sb.from("students").delete().eq("id", id);
   };
   const doDeleteSession = async (id?: string) => {
+    if (!sb) return;
     if (!id) return;
-    await supabase.from("sessions").delete().eq("id", id);
+    await sb.from("sessions").delete().eq("id", id);
   };
   const doDeleteAttendance = async (sid?: string, stid?: string) => {
+    if (!sb) return;
     if (!sid || !stid) return;
-    await supabase.from("attendance").delete().match({ session_id: sid, student_id: stid });
+    await sb.from("attendance").delete().match({ session_id: sid, student_id: stid });
   };
 
   /* ------------ Charts data ------------ */

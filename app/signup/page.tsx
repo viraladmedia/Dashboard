@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -22,32 +22,46 @@ export default function SignupPage() {
     e.preventDefault();
     setErr(null);
     setMsg(null);
+
+    const sb = getBrowserSupabase();
+    if (!sb) {
+      setErr("Supabase client unavailable in this environment.");
+      return;
+    }
+
     setLoading(true);
+    try {
+      // Where to send the email confirmation link (if confirmations are enabled)
+      const redirect =
+        (typeof window !== "undefined" ? window.location.origin : "") + "/dashboard";
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-        emailRedirectTo: `${location.origin}/dashboard`,
-      },
-    });
+      const { data, error } = await sb.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { name },
+          emailRedirectTo: redirect,
+        },
+      });
 
-    setLoading(false);
+      if (error) {
+        setErr(error.message);
+        return;
+      }
 
-    if (error) {
-      setErr(error.message);
-      return;
+      // If email confirmations are required, the user will exist but no session yet
+      if (data?.user && !data?.session) {
+        setMsg("Check your email to confirm your account, then sign in.");
+        return;
+      }
+
+      // Otherwise they’re signed in immediately
+      router.replace(next);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
     }
-
-    // If email confirmations are enabled in Supabase, user must confirm first:
-    if (data.user && !data.session) {
-      setMsg("Check your email to confirm your account, then sign in.");
-      return;
-    }
-
-    // Otherwise, signed in immediately:
-    router.replace(next);
   };
 
   return (
