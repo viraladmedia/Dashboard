@@ -1,113 +1,135 @@
 // File: lib/db/attendance.ts
-import { supabase } from "@/lib/supabase/client";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
 
-export type Teacher = {
-  id: string; user_id: string;
-  first_name: string; last_name: string; created_at: string;
+import { getBrowserSupabase } from "@/lib/supabase/client";
+
+/** Types aligned with your tables/views */
+export type Teacher = { id: string; name: string; email: string | null };
+export type Student = {
+  id: string; name: string; email: string | null;
+  program: string | null; duration_weeks: number | null;
+  sessions_per_week: number | null; class_name: string | null;
+};
+export type Session = { id: string; teacher_id: string | null; title: string | null; starts_at: string };
+export type Attendance = {
+  session_id: string; student_id: string;
+  status: "present" | "absent" | "late"; noted_at: string;
 };
 
-export type Student = {
-  id: string; user_id: string;
-  teacher_id: string | null;
-  first_name: string; last_name: string;
+/** Get a client only when called in the browser */
+function sb() {
+  const s = getBrowserSupabase();
+  if (!s) throw new Error("Supabase client unavailable on server. Call these helpers from client components.");
+  return s;
+}
+
+/* ------------ Reads (prefer views with RLS baked in) ------------ */
+export async function listTeachers(): Promise<Teacher[]> {
+  const { data, error } = await sb().from("my_teachers").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as Teacher[];
+}
+
+export async function listStudents(): Promise<Student[]> {
+  const { data, error } = await sb().from("my_students").select("*").order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as Student[];
+}
+
+export async function listSessions(): Promise<Session[]> {
+  const { data, error } = await sb().from("my_sessions").select("*").order("starts_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as Session[];
+}
+
+export async function listAttendance(): Promise<Attendance[]> {
+  const { data, error } = await sb().from("my_attendance").select("*").order("noted_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as Attendance[];
+}
+
+/* ------------ Creates ------------ */
+export async function createTeacher(payload: { name: string; email?: string | null }) {
+  return sb().from("teachers").insert({ name: payload.name, email: payload.email ?? null });
+}
+
+export async function createStudentAndLink(args: {
+  teacher_id: string;
+  name: string;
+  email?: string | null;
   program?: string | null;
   duration_weeks?: number | null;
   sessions_per_week?: number | null;
   class_name?: string | null;
-  created_at: string;
-};
-
-export type AttendanceRow = {
-  id: string; user_id: string;
-  teacher_id: string | null;
-  student_id: string;
-  class_name?: string | null;
-  date: string; // yyyy-mm-dd
-  status: "present" | "absent";
-  location?: string | null;
-  created_at: string;
-};
-
-export async function loadAll() {
-  const [t, s, a] = await Promise.all([
-    supabase.from("teachers").select("*").order("created_at", { ascending: false }),
-    supabase.from("students").select("*").order("created_at", { ascending: false }),
-    supabase.from("attendance").select("*").order("date", { ascending: false }),
-  ]);
-  if (t.error) throw t.error;
-  if (s.error) throw s.error;
-  if (a.error) throw a.error;
-  return {
-    teachers: (t.data || []) as Teacher[],
-    students: (s.data || []) as Student[],
-    attendance: (a.data || []) as AttendanceRow[],
-  };
+}) {
+  return sb().rpc("create_student_and_link", {
+    p_teacher_id: args.teacher_id,
+    p_name: args.name,
+    p_email: args.email ?? null,
+    p_program: args.program ?? null,
+    p_duration_weeks: args.duration_weeks ?? null,
+    p_sessions_per_week: args.sessions_per_week ?? null,
+    p_class_name: args.class_name ?? null,
+  });
 }
 
-/* ---------- TEACHERS ---------- */
-export async function addTeacher(first_name: string, last_name: string) {
-  const { data, error } = await supabase
-    .from("teachers")
-    .insert({ first_name, last_name })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as Teacher;
+export async function createSessionOwned(args: { teacher_id: string; title?: string | null; starts_at_iso: string }) {
+  return sb().rpc("create_session_owned", {
+    p_teacher_id: args.teacher_id,
+    p_title: args.title ?? null,
+    p_starts_at: args.starts_at_iso,
+  });
 }
+
+export async function markAttendance(args: { session_id: string; student_id: string; status: Attendance["status"] }) {
+  return sb().from("attendance").insert({
+    session_id: args.session_id,
+    student_id: args.student_id,
+    status: args.status,
+  });
+}
+
+/* ------------ Updates ------------ */
+export async function updateTeacher(id: string, payload: { name?: string; email?: string | null }) {
+  return sb().from("teachers").update(payload).eq("id", id);
+}
+
+export async function updateStudent(id: string, payload: Partial<Omit<Student, "id">>) {
+  return sb().from("students").update(payload).eq("id", id);
+}
+
+export async function relinkStudentToTeacher(studentId: string, teacherId: string) {
+  const client = sb();
+  await client.from("teacher_students").delete().eq("student_id", studentId);
+  return client.from("teacher_students").insert({ teacher_id: teacherId, student_id: studentId });
+}
+
+export async function updateSession(id: string, payload: { teacher_id?: string | null; title?: string | null; starts_at_iso?: string }) {
+  return sb().from("sessions").update({
+    teacher_id: payload.teacher_id ?? null,
+    title: payload.title ?? null,
+    starts_at: payload.starts_at_iso ?? undefined,
+  }).eq("id", id);
+}
+
+export async function updateAttendanceStatus(session_id: string, student_id: string, status: Attendance["status"]) {
+  return sb().from("attendance").update({ status }).match({ session_id, student_id });
+}
+
+/* ------------ Deletes ------------ */
 export async function deleteTeacher(id: string) {
-  const { error } = await supabase.from("teachers").delete().eq("id", id);
-  if (error) throw error;
+  return sb().from("teachers").delete().eq("id", id);
 }
 
-/* ---------- STUDENTS ---------- */
-export async function addStudent(input: {
-  first_name: string; last_name: string; teacher_id: string;
-  program?: string; duration_weeks?: number | ""; sessions_per_week?: number | "";
-  class_name?: string;
-}) {
-  const payload = {
-    ...input,
-    duration_weeks: input.duration_weeks === "" ? null : input.duration_weeks,
-    sessions_per_week: input.sessions_per_week === "" ? null : input.sessions_per_week,
-  };
-  const { data, error } = await supabase.from("students").insert(payload).select().single();
-  if (error) throw error;
-  return data as Student;
-}
 export async function deleteStudent(id: string) {
-  const { error } = await supabase.from("students").delete().eq("id", id);
-  if (error) throw error;
+  return sb().from("students").delete().eq("id", id);
 }
 
-/* ---------- ATTENDANCE ---------- */
-export async function addAttendance(input: {
-  date: string; teacher_id: string; student_id: string;
-  status: "present" | "absent"; class_name?: string; location?: string;
-}) {
-  const { data, error } = await supabase.from("attendance").insert(input).select().single();
-  if (error) throw error;
-  return data as AttendanceRow;
-}
-export async function updateAttendance(id: string, patch: Partial<AttendanceRow>) {
-  const { data, error } = await supabase.from("attendance").update(patch).eq("id", id).select().single();
-  if (error) throw error;
-  return data as AttendanceRow;
-}
-export async function deleteAttendance(id: string) {
-  const { error } = await supabase.from("attendance").delete().eq("id", id);
-  if (error) throw error;
+export async function deleteSession(id: string) {
+  return sb().from("sessions").delete().eq("id", id);
 }
 
-/* ---------- Realtime subscription (optional, nice!) ---------- */
-export function subscribeAttendance(onChange: () => void) {
-  // You can expand to also watch teachers/students if you like
-  const channel = supabase
-    .channel("attendance-live")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "attendance" },
-      () => onChange()
-    )
-    .subscribe();
-  return () => { supabase.removeChannel(channel); };
+export async function deleteAttendance(session_id: string, student_id: string) {
+  return sb().from("attendance").delete().match({ session_id, student_id });
 }
