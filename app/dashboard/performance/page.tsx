@@ -1,4 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */ 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// File: app/dashboard/performance/page.tsx
 "use client";
 
 import * as React from "react";
@@ -11,23 +12,52 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
-  Calendar, RefreshCcw, Upload, Download, ChevronDown, SlidersHorizontal,
+  Calendar,
+  RefreshCcw,
+  Upload,
+  Download,
+  ChevronDown,
+  SlidersHorizontal,
+  Search,
 } from "lucide-react";
 import {
-  BarChart as RBarChart, Bar, CartesianGrid, XAxis, YAxis,
-  ResponsiveContainer, Tooltip, Legend, LineChart as RLineChart, Line,
+  BarChart as RBarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+  LineChart as RLineChart,
+  Line,
 } from "recharts";
 
 /* ---------------- types & helpers ---------------- */
 
-type Preset = "last_24h" | "last_48h" | "last_7d" | "last_30d" | "last_60d" | "last_90d" | "custom";
-type Level  = "campaign" | "adset" | "ad";
+type Preset =
+  | "last_24h"
+  | "last_48h"
+  | "last_7d"
+  | "last_30d"
+  | "last_60d"
+  | "last_90d"
+  | "custom";
+type Level = "campaign" | "adset" | "ad";
 
 const safePer = (num?: number, den?: number) =>
   !num || !den || den === 0 ? null : num / den;
@@ -61,25 +91,28 @@ function norm(row: Normalizable) {
   const checkouts = num(row.checkouts, 0);
   const purchases = num(row.purchases, 0);
 
-  // If we can compute ROAS, return a number; otherwise return undefined (NOT null)
+  // Return number | undefined to satisfy Normalizable type
   const roas: number | undefined =
-    spend > 0 ? rev / spend : (typeof row.roas === "number" ? row.roas : undefined);
+    spend > 0 ? rev / spend : typeof row.roas === "number" ? row.roas : undefined;
 
   return { spend, rev, imps, clicks, leads, checkouts, purchases, roas };
 }
-
 
 const getFromLS = <T,>(key: string, fallback: T): T => {
   if (typeof window === "undefined") return fallback;
   try {
     const v = localStorage.getItem(key);
     return v ? (JSON.parse(v) as T) : fallback;
-  } catch { return fallback; }
+  } catch {
+    return fallback;
+  }
 };
 
 const putToLS = (key: string, value: unknown) => {
   if (typeof window === "undefined") return;
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
 };
 
 function mostCommon(arr: (string | undefined | null)[]) {
@@ -89,27 +122,53 @@ function mostCommon(arr: (string | undefined | null)[]) {
     if (!k) continue;
     counts.set(k, (counts.get(k) || 0) + 1);
   }
-  let best = ""; let bestN = 0;
-  counts.forEach((n, k) => { if (n > bestN) { bestN = n; best = k; } });
+  let best = "";
+  let bestN = 0;
+  counts.forEach((n, k) => {
+    if (n > bestN) {
+      bestN = n;
+      best = k;
+    }
+  });
   return best || "";
 }
 
 const labelForPreset = (p: Preset) =>
-  p === "last_24h" ? "Last 24 hours" :
-  p === "last_48h" ? "Last 48 hours" :
-  p === "last_7d"  ? "Last 7 days"  :
-  p === "last_30d" ? "Last 30 days" :
-  p === "last_60d" ? "Last 60 days" :
-  p === "last_90d" ? "Last 90 days" : "Custom range";
+  p === "last_24h"
+    ? "Last 24 hours"
+    : p === "last_48h"
+    ? "Last 48 hours"
+    : p === "last_7d"
+    ? "Last 7 days"
+    : p === "last_30d"
+    ? "Last 30 days"
+    : p === "last_60d"
+    ? "Last 60 days"
+    : p === "last_90d"
+    ? "Last 90 days"
+    : "Custom range";
 
 type Account = { key: string; label: string };
 
 function normalizeAccount(o: Record<string, unknown>): Account | null {
   const key = String(
-    o["key"] ?? o["id"] ?? o["account_id"] ?? o["accountId"] ?? o["account"] ?? o["pk"] ?? o["uid"] ?? ""
+    o["key"] ??
+      o["id"] ??
+      o["account_id"] ??
+      o["accountId"] ??
+      o["account"] ??
+      o["pk"] ??
+      o["uid"] ??
+      ""
   );
   const label = String(
-    (o["label"] ?? o["name"] ?? o["account_name"] ?? o["displayName"] ?? o["title"] ?? o["accountName"] ?? "") || key
+    (o["label"] ??
+      o["name"] ??
+      o["account_name"] ??
+      o["displayName"] ??
+      o["title"] ??
+      o["accountName"] ??
+      "") || key
   );
   return key ? { key, label } : null;
 }
@@ -127,19 +186,29 @@ export default function PerformancePage() {
 
   // thresholds (full set, persisted)
   type Thresholds = {
-    roasKill: number; roasScale: number; cpaKill: number; cpaGood: number;
-    minSpend: number; minClicks: number;
+    roasKill: number;
+    roasScale: number;
+    cpaKill: number;
+    cpaGood: number;
+    minSpend: number;
+    minClicks: number;
   };
   const [thresholds, setThresholds] = React.useState<Thresholds>(() => {
     return getFromLS<Thresholds>("vam.thresholds", {
-      roasKill: 1, roasScale: 2.5, cpaKill: 80, cpaGood: 25, minSpend: 0, minClicks: 0,
+      roasKill: 1,
+      roasScale: 2.5,
+      cpaKill: 80,
+      cpaGood: 25,
+      minSpend: 0,
+      minClicks: 0,
     });
   });
   React.useEffect(() => putToLS("vam.thresholds", thresholds), [thresholds]);
 
-  // date range (default: last_30d now)
+  // date range (default: last_30d)
   const [preset, setPreset] = React.useState<Preset>("last_30d");
-  const [from, setFrom] = React.useState<string>(""); const [to, setTo] = React.useState<string>("");
+  const [from, setFrom] = React.useState<string>("");
+  const [to, setTo] = React.useState<string>("");
 
   // ui/data
   const [query, setQuery] = React.useState("");
@@ -147,10 +216,9 @@ export default function PerformancePage() {
   const [loading, setLoading] = React.useState(false);
 
   // accounts list for inline account selector
-  const [accounts, setAccounts] = React.useState<Account[]>([{ key: "all", label: "All Accounts" }]);
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-
+  const [accounts, setAccounts] = React.useState<Account[]>([
+    { key: "all", label: "All Accounts" },
+  ]);
   React.useEffect(() => {
     (async () => {
       try {
@@ -158,14 +226,21 @@ export default function PerformancePage() {
         if (!res.ok) throw new Error("accounts fetch failed");
         const json = await res.json();
         const raw: Account[] = (Array.isArray(json) ? json : json?.accounts || [])
-          .map((o: unknown) => normalizeAccount((o || {}) as Record<string, unknown>))
+          .map((o: unknown) =>
+            normalizeAccount((o || {}) as Record<string, unknown>)
+          )
           .filter((x: Account | null): x is Account => !!x);
         const uniq = new Map<string, Account>();
-        raw.forEach(a => { if (!uniq.has(a.key)) uniq.set(a.key, a); });
-        setAccounts([{ key: "all", label: "All Accounts" }, ...Array.from(uniq.values())]);
+        raw.forEach((a) => {
+          if (!uniq.has(a.key)) uniq.set(a.key, a);
+        });
+        setAccounts([
+          { key: "all", label: "All Accounts" },
+          ...Array.from(uniq.values()),
+        ]);
 
         // keep context label fresh
-        const match = raw.find(a => a.key === accountId);
+        const match = raw.find((a) => a.key === accountId);
         if (match && match.label && match.label !== accountLabel) {
           setAccount(match.key, match.label);
         }
@@ -183,8 +258,16 @@ export default function PerformancePage() {
     const dp = url.searchParams.get("date_preset") as Preset | null;
     const f = url.searchParams.get("from");
     const t = url.searchParams.get("to");
-    if (dp) { setPreset(dp); setFrom(""); setTo(""); }
-    if (f && t) { setPreset("custom"); setFrom(f); setTo(t); }
+    if (dp) {
+      setPreset(dp);
+      setFrom("");
+      setTo("");
+    }
+    if (f && t) {
+      setPreset("custom");
+      setFrom(f);
+      setTo(t);
+    }
   }, []);
 
   /** fetch merged rows */
@@ -196,12 +279,11 @@ export default function PerformancePage() {
       params.set("include_dims", "1");
       if (accountId !== "all") params.set("account", accountId);
       if (preset === "custom" && from && to) {
-        params.set("from", from); params.set("to", to);
+        params.set("from", from);
+        params.set("to", to);
       } else {
         params.set("date_preset", preset);
       }
-      // ask API to include dimension enrichments if supported
-      params.set("include_dims", "1");
       const res = await fetch(`/api/import/merge?${params.toString()}`);
       const data = (await res.json()) as Row[] | { error?: string };
       setRows(Array.isArray(data) ? data : []);
@@ -212,11 +294,15 @@ export default function PerformancePage() {
     }
   }, [accountId, tab, preset, from, to]);
 
-  React.useEffect(() => { fetchRows(); }, [fetchRows]);
+  React.useEffect(() => {
+    fetchRows();
+  }, [fetchRows]);
 
-  const handleSync = React.useCallback(async () => { await fetchRows(); }, [fetchRows]);
+  const handleSync = React.useCallback(async () => {
+    await fetchRows();
+  }, [fetchRows]);
 
-  /* filters */
+  /* filters — used for TABLE only */
   const filteredRows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
@@ -225,30 +311,63 @@ export default function PerformancePage() {
       if (clicks < thresholds.minClicks) return false;
       if (!q) return true;
       const hay = [
-        r.product, r.campaign, r.adset, r.ad, r.channel, r.account_name,
+        r.product,
+        r.campaign,
+        r.adset,
+        r.ad,
+        r.channel,
+        r.account_name,
         // dimensions if present
-        (r as any).placement, (r as any).platform, (r as any).device, (r as any).country, (r as any).age,
-      ].map(x => (x || "").toString().toLowerCase()).join(" ");
+        (r as any).placement,
+        (r as any).platform,
+        (r as any).device,
+        (r as any).country,
+        (r as any).age,
+      ]
+        .map((x) => (x || "").toString().toLowerCase())
+        .join(" ");
       return hay.includes(q);
     });
   }, [rows, thresholds.minSpend, thresholds.minClicks, query]);
 
-  /* aggregates */
-  const agg = React.useMemo(() => aggregate(filteredRows), [filteredRows]);
-  const CPC  = safePer(agg.spend, agg.clicks);
-  const CPL  = safePer(agg.spend, agg.leads);
-  const CPA  = safePer(agg.spend, agg.purchases);
-  const CPCB = safePer(agg.spend, agg.checkouts);
+  /* KPIs & Trend: raw vs filtered toggle */
+  const [applyFiltersToKpis, setApplyFiltersToKpis] = React.useState(false);
+
+  const aggAll = React.useMemo(() => aggregate(rows), [rows]);
+  const CPC_all = safePer(aggAll.spend, aggAll.clicks);
+  const CPL_all = safePer(aggAll.spend, aggAll.leads);
+  const CPA_all = safePer(aggAll.spend, aggAll.purchases);
+  const CPCB_all = safePer(aggAll.spend, aggAll.checkouts);
+
+  const agg = applyFiltersToKpis ? aggregate(filteredRows) : aggAll;
+  const CPC = applyFiltersToKpis ? safePer(agg.spend, agg.clicks) : CPC_all;
+  const CPL = applyFiltersToKpis ? safePer(agg.spend, agg.leads) : CPL_all;
+  const CPA = applyFiltersToKpis ? safePer(agg.spend, agg.purchases) : CPA_all;
+  const CPCB = applyFiltersToKpis ? safePer(agg.spend, agg.checkouts) : CPCB_all;
+
+  const dailyTrend = React.useMemo(() => {
+    const base = applyFiltersToKpis ? filteredRows : rows;
+    const g = groupBy(base, (r) => r.date);
+    return Array.from(g.entries())
+      .map(([date, arr]) => {
+        const a = aggregate(arr);
+        const n = norm(a as unknown as Normalizable);
+        return { date, spend: n.spend, revenue: n.rev, clicks: n.clicks };
+      })
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }, [rows, filteredRows, applyFiltersToKpis]);
 
   /* decision badge (uses thresholds) */
   function decide(row: Normalizable) {
     const n = norm(row);
-    // guardrails
-    if (n.spend < thresholds.minSpend || (n.clicks ?? 0) < thresholds.minClicks) return { label: "Learn", tone: "muted" as const };
+    if (n.spend < thresholds.minSpend || (n.clicks ?? 0) < thresholds.minClicks)
+      return { label: "Learn", tone: "muted" as const };
     const cpa = safePer(n.spend, n.purchases);
-    const goodScale = (n.roas ?? 0) >= thresholds.roasScale && (cpa ?? Infinity) <= thresholds.cpaGood;
+    const goodScale =
+      (n.roas ?? 0) >= thresholds.roasScale && (cpa ?? Infinity) <= thresholds.cpaGood;
     if (goodScale) return { label: "Scale", tone: "green" as const };
-    const shouldKill = (n.roas ?? Infinity) <= thresholds.roasKill || (cpa ?? 0) >= thresholds.cpaKill;
+    const shouldKill =
+      (n.roas ?? Infinity) <= thresholds.roasKill || (cpa ?? 0) >= thresholds.cpaKill;
     if (shouldKill) return { label: "Kill", tone: "red" as const };
     return { label: "Optimize", tone: "amber" as const };
   }
@@ -256,47 +375,47 @@ export default function PerformancePage() {
   /* charts */
   const roasByDim = React.useMemo(() => {
     const keyGetter = (r: Row) =>
-      tab === "ad" ? (r.ad || "(no ad)")
-      : tab === "adset" ? (r.adset || "(no ad set)")
-      : (r.campaign || "(no campaign)");
-    const g = groupBy(filteredRows, keyGetter);
-    return Array.from(g.entries()).map(([name, arr]) => {
-      const a = aggregate(arr);
-      const n = norm(a as unknown as Normalizable);
-      return { name, roas: n.roas ?? 0, revenue: n.rev, spend: n.spend };
-    }).sort((a, b) => (b.roas - a.roas) || (b.revenue - a.revenue)).slice(0, 12);
-  }, [filteredRows, tab]);
-
-  const dailyTrend = React.useMemo(() => {
-    const g = groupBy(filteredRows, r => r.date);
-    return Array.from(g.entries()).map(([date, arr]) => {
-      const a = aggregate(arr);
-      const n = norm(a as unknown as Normalizable);
-      return { date, spend: n.spend, revenue: n.rev, clicks: n.clicks };
-    }).sort((a, b) => (a.date < b.date ? -1 : 1));
-  }, [filteredRows]);
+      tab === "ad" ? r.ad || "(no ad)" : tab === "adset" ? r.adset || "(no ad set)" : r.campaign || "(no campaign)";
+    const base = applyFiltersToKpis ? filteredRows : rows;
+    const g = groupBy(base, keyGetter);
+    return Array.from(g.entries())
+      .map(([name, arr]) => {
+        const a = aggregate(arr);
+        const n = norm(a as unknown as Normalizable);
+        return { name, roas: n.roas ?? 0, revenue: n.rev, spend: n.spend };
+      })
+      .sort((a, b) => b.roas - a.roas || b.revenue - a.revenue)
+      .slice(0, 12);
+  }, [rows, filteredRows, tab, applyFiltersToKpis]);
 
   /* insights: which dims bring most leads & purchases */
   type DimKey = "placement" | "platform" | "device" | "country" | "age";
   const dimensionInsights = React.useMemo(() => {
     const dims: DimKey[] = ["placement", "platform", "device", "country", "age"];
-    const results: Record<DimKey, { byLeads: { name: string; leads: number }[]; byPurch: { name: string; purchases: number }[] }> = {} as any;
+    const base = applyFiltersToKpis ? filteredRows : rows;
+    const results: Record<
+      DimKey,
+      { byLeads: { name: string; leads: number }[]; byPurch: { name: string; purchases: number }[] }
+    > = {} as any;
 
     for (const d of dims) {
-      // normalize accessor (support multiple possible source keys)
       const accessor = (r: Row): string => {
         const any = r as any;
         const v =
-          (d === "placement" ? (any.placement ?? any.platform_position) :
-          d === "platform"  ? (any.platform  ?? any.publisher_platform) :
-          d === "device"    ? (any.device    ?? any.device_platform) :
-          d === "country"   ? (any.country   ?? any.geo ?? any.geo_country) :
-                              (any.age       ?? any.age_range));
+          d === "placement"
+            ? any.placement ?? any.platform_position
+            : d === "platform"
+            ? any.platform ?? any.publisher_platform
+            : d === "device"
+            ? any.device ?? any.device_platform
+            : d === "country"
+            ? any.country ?? any.geo ?? any.geo_country
+            : any.age ?? any.age_range;
         const s = (v ?? "").toString().trim();
         return s || "(unavailable)";
       };
 
-      const g = groupBy(filteredRows, accessor);
+      const g = groupBy(base, accessor);
       const items = Array.from(g.entries()).map(([name, arr]) => {
         const a = aggregate(arr);
         return { name, leads: a.leads ?? 0, purchases: a.purchases ?? 0 };
@@ -307,39 +426,53 @@ export default function PerformancePage() {
       results[d] = { byLeads, byPurch };
     }
     return results;
-  }, [filteredRows]);
+  }, [rows, filteredRows, applyFiltersToKpis]);
 
-  /* table rows for the active tab */
+  /* table rows for the active tab (always from filteredRows) */
   const tableRows = React.useMemo(() => {
     const keyGetter = (r: Row) =>
-      tab === "ad" ? (r.ad || "(no ad)")
-      : tab === "adset" ? (r.adset || "(no ad set)")
-      : (r.campaign || "(no campaign)");
+      tab === "ad" ? r.ad || "(no ad)" : tab === "adset" ? r.adset || "(no ad set)" : r.campaign || "(no campaign)";
 
     const g = groupBy(filteredRows, keyGetter);
-    return Array.from(g.entries()).map(([entity, arr]) => {
-      const a = aggregate(arr);
-      const n = norm(a as unknown as Normalizable);
-      const imps = a.impressions ?? 0;
-      const dec = decide({ ...n, roas: n.roas ?? undefined }); // <-- ensure no `null`
-      return {
-        entity,
-        product: mostCommon(arr.map(x => x.product)),
-        channel: mostCommon(arr.map(x => x.channel)),
-        account: mostCommon(arr.map(x => (x as any).account_name ?? (x as any).account ?? "")),
+    return Array.from(g.entries())
+      .map(([entity, arr]) => {
+        const a = aggregate(arr);
+        const n = norm(a as unknown as Normalizable);
+        const imps = a.impressions ?? 0;
+        const dec = decide({ ...n, roas: n.roas ?? undefined });
+        return {
+          entity,
+          product: mostCommon(arr.map((x) => x.product)),
+          channel: mostCommon(arr.map((x) => x.channel)),
+          account: mostCommon(
+            arr.map((x) => (x as any).account_name ?? (x as any).account ?? "")
+          ),
 
-        spend: n.spend, rev: n.rev, roas: n.roas,
-        imps, clicks: n.clicks, leads: n.leads, checkouts: n.checkouts, purchases: n.purchases,
-        cpc: safePer(n.spend, n.clicks),
-        cpl: safePer(n.spend, n.leads),
-        cpa: safePer(n.spend, n.purchases),
-        cpcb: safePer(n.spend, n.checkouts),
-        ctr: imps ? (n.clicks / imps) : null,
+          spend: n.spend,
+          rev: n.rev,
+          roas: n.roas,
+          imps,
+          clicks: n.clicks,
+          leads: n.leads,
+          checkouts: n.checkouts,
+          purchases: n.purchases,
+          cpc: safePer(n.spend, n.clicks),
+          cpl: safePer(n.spend, n.leads),
+          cpa: safePer(n.spend, n.purchases),
+          cpcb: safePer(n.spend, n.checkouts),
+          ctr: imps ? n.clicks / imps : null,
 
-        decision: dec,
-      };
-    }).sort((a, b) => b.rev - a.rev);
+          decision: dec,
+        };
+      })
+      .sort((a, b) => b.rev - a.rev);
   }, [filteredRows, tab, thresholds]);
+
+  const hasActiveFilters = React.useMemo(() => {
+    const thresholdsActive = thresholds.minSpend > 0 || thresholds.minClicks > 0;
+    const searchActive = query.trim().length > 0;
+    return thresholdsActive || searchActive;
+  }, [thresholds.minSpend, thresholds.minClicks, query]);
 
   /* ---------------- render ---------------- */
 
@@ -360,13 +493,18 @@ export default function PerformancePage() {
 
           {/* Level tabs */}
           <div className="inline-flex rounded-lg border bg-white/80 p-1">
-            {(["campaign","adset","ad"] as Level[]).map((lvl) => (
+            {(["campaign", "adset", "ad"] as Level[]).map((lvl) => (
               <button
                 key={lvl}
-                onClick={() => { setTab(lvl); putToLS("vam.level", lvl); }}
+                onClick={() => {
+                  setTab(lvl);
+                  putToLS("vam.level", lvl);
+                }}
                 className={[
                   "px-3 py-1.5 rounded-md text-sm font-medium transition",
-                  tab === lvl ? "bg-slate-900 text-white shadow" : "text-slate-700 hover:bg-slate-100"
+                  tab === lvl
+                    ? "bg-slate-900 text-white shadow"
+                    : "text-slate-700 hover:bg-slate-100",
                 ].join(" ")}
               >
                 {lvl === "campaign" ? "Campaign" : lvl === "adset" ? "Ad Set" : "Ad"}
@@ -384,22 +522,29 @@ export default function PerformancePage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              {([
-                ["last_24h", "Last 24 hours"],
-                ["last_48h", "Last 48 hours"],
-                ["last_7d", "Last 7 days"],
-                ["last_30d", "Last 30 days"],
-                ["last_60d", "Last 60 days"],
-                ["last_90d", "Last 90 days"],
-                ["custom", "Custom…"],
-              ] as [Preset, string][])
-                .map(([val, label]) => (
-                  <DropdownMenuItem
-                    key={val}
-                    onClick={() => { setPreset(val); if (val !== "custom") { setFrom(""); setTo(""); } }}
-                  >
-                    {label}
-                  </DropdownMenuItem>
+              {(
+                [
+                  ["last_24h", "Last 24 hours"],
+                  ["last_48h", "Last 48 hours"],
+                  ["last_7d", "Last 7 days"],
+                  ["last_30d", "Last 30 days"],
+                  ["last_60d", "Last 60 days"],
+                  ["last_90d", "Last 90 days"],
+                  ["custom", "Custom…"],
+                ] as [Preset, string][]
+              ).map(([val, label]) => (
+                <DropdownMenuItem
+                  key={val}
+                  onClick={() => {
+                    setPreset(val);
+                    if (val !== "custom") {
+                      setFrom("");
+                      setTo("");
+                    }
+                  }}
+                >
+                  {label}
+                </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -407,9 +552,19 @@ export default function PerformancePage() {
           {/* Custom range */}
           {preset === "custom" && (
             <div className="flex items-center gap-1">
-              <Input type="date" className="h-9" value={from} onChange={(e) => setFrom(e.target.value)} />
+              <Input
+                type="date"
+                className="h-9"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
               <span className="text-slate-500 text-sm">to</span>
-              <Input type="date" className="h-9" value={to} onChange={(e) => setTo(e.target.value)} />
+              <Input
+                type="date"
+                className="h-9"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+              />
             </div>
           )}
 
@@ -421,15 +576,21 @@ export default function PerformancePage() {
 
           {/* Import / Export (icon buttons only) */}
           <Button
-            size="sm" variant="outline"
-            onClick={() => window.dispatchEvent(new CustomEvent("vam:open-import"))}
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("vam:open-import"))
+            }
             aria-label="Import"
           >
             <Upload className="h-4 w-4" />
           </Button>
           <Button
-            size="sm" variant="outline"
-            onClick={() => window.dispatchEvent(new CustomEvent("vam:export-campaigns"))}
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("vam:export-campaigns"))
+            }
             aria-label="Export"
           >
             <Download className="h-4 w-4" />
@@ -445,21 +606,88 @@ export default function PerformancePage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72 p-2">
-              <div className="text-xs font-semibold text-slate-600 px-1 pb-1">Decision thresholds</div>
+              <div className="text-xs font-semibold text-slate-600 px-1 pb-1">
+                Decision thresholds
+              </div>
 
-              <Field label="ROAS — Kill at ≤" value={thresholds.roasKill} onChange={(v) => setThresholds(s => ({ ...s, roasKill: v }))} step="0.1" />
-              <Field label="ROAS — Scale at ≥" value={thresholds.roasScale} onChange={(v) => setThresholds(s => ({ ...s, roasScale: v }))} step="0.1" />
-              <Field label="CPA — Kill at ≥" value={thresholds.cpaKill} onChange={(v) => setThresholds(s => ({ ...s, cpaKill: v }))} />
-              <Field label="CPA — Good at ≤" value={thresholds.cpaGood} onChange={(v) => setThresholds(s => ({ ...s, cpaGood: v }))} />
+              <Field
+                label="ROAS — Kill at ≤"
+                value={thresholds.roasKill}
+                onChange={(v) => setThresholds((s) => ({ ...s, roasKill: v }))}
+                step="0.1"
+              />
+              <Field
+                label="ROAS — Scale at ≥"
+                value={thresholds.roasScale}
+                onChange={(v) => setThresholds((s) => ({ ...s, roasScale: v }))}
+                step="0.1"
+              />
+              <Field
+                label="CPA — Kill at ≥"
+                value={thresholds.cpaKill}
+                onChange={(v) => setThresholds((s) => ({ ...s, cpaKill: v }))}
+              />
+              <Field
+                label="CPA — Good at ≤"
+                value={thresholds.cpaGood}
+                onChange={(v) => setThresholds((s) => ({ ...s, cpaGood: v }))}
+              />
               <DropdownMenuSeparator />
-              <Field label="Min Spend (USD)" value={thresholds.minSpend} onChange={(v) => setThresholds(s => ({ ...s, minSpend: v }))} />
-              <Field label="Min Clicks" value={thresholds.minClicks} onChange={(v) => setThresholds(s => ({ ...s, minClicks: v }))} />
+              <Field
+                label="Min Spend (USD)"
+                value={thresholds.minSpend}
+                onChange={(v) => setThresholds((s) => ({ ...s, minSpend: v }))}
+              />
+              <Field
+                label="Min Clicks"
+                value={thresholds.minClicks}
+                onChange={(v) => setThresholds((s) => ({ ...s, minClicks: v }))}
+              />
 
               <div className="px-1 pt-2 text-[11px] text-slate-500">
                 These rules drive <b>Scale / Optimize / Kill</b> decisions in tables.
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+
+        {/* Active filters chip + KPI toggle */}
+        {(hasActiveFilters || applyFiltersToKpis) && (
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-xs text-slate-600">
+            {hasActiveFilters ? "Filters active" : "No filters"}
+            {hasActiveFilters && (
+              <button
+                className="rounded-full border px-2 py-0.5 hover:bg-slate-50"
+                onClick={() => {
+                  setQuery("");
+                  setThresholds((s) => ({ ...s, minSpend: 0, minClicks: 0 }));
+                }}
+              >
+                Clear
+              </button>
+            )}
+            <label className="inline-flex items-center gap-1 ml-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={applyFiltersToKpis}
+                onChange={(e) => setApplyFiltersToKpis(e.target.checked)}
+              />
+              Apply to KPIs
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* Lightweight search just under the controls */}
+      <div className="my-3">
+        <div className="relative max-w-xl">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search entity, account, placement, platform, device, country, age…"
+            className="pl-8"
+          />
         </div>
       </div>
 
@@ -468,9 +696,9 @@ export default function PerformancePage() {
         <Stat title="Spend" value={currency(agg.spend)} />
         <Stat title="Revenue" value={currency(agg.revenue)} />
         <Stat title="ROAS" value={agg.roas == null ? "–" : `${agg.roas.toFixed(2)}x`} />
-        <Stat title="CPC"  value={CPC  == null ? "–" : currency(CPC)} />
-        <Stat title="CPL"  value={CPL  == null ? "–" : currency(CPL)} />
-        <Stat title="CPA"  value={CPA  == null ? "–" : currency(CPA)} />
+        <Stat title="CPC" value={CPC == null ? "–" : currency(CPC)} />
+        <Stat title="CPL" value={CPL == null ? "–" : currency(CPL)} />
+        <Stat title="CPA" value={CPA == null ? "–" : currency(CPA)} />
       </div>
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6 mb-6">
         <Stat title="CPCB" value={CPCB == null ? "–" : currency(CPCB)} />
@@ -485,7 +713,11 @@ export default function PerformancePage() {
       <Card className="rounded-2xl border-2 border-white/40 bg-white/85 backdrop-blur overflow-hidden">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-slate-700">
-            {tab === "ad" ? "ROAS by Ad" : tab === "adset" ? "ROAS by Ad Set" : "ROAS by Campaign"}
+            {tab === "ad"
+              ? "ROAS by Ad"
+              : tab === "adset"
+              ? "ROAS by Ad Set"
+              : "ROAS by Campaign"}
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0 h-72">
@@ -505,7 +737,9 @@ export default function PerformancePage() {
 
       <Card className="mt-4 rounded-2xl border-2 border-white/40 bg-white/85 backdrop-blur overflow-hidden">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-slate-700">Daily Trend</CardTitle>
+          <CardTitle className="text-sm font-semibold text-slate-700">
+            Daily Trend
+          </CardTitle>
         </CardHeader>
         <CardContent className="pt-0 h-72">
           <ResponsiveContainer width="100%" height="100%">
@@ -522,32 +756,29 @@ export default function PerformancePage() {
         </CardContent>
       </Card>
 
-      {/* Insights: Top dims */}
+      {/* Dimension Insights */}
       <div className="mt-4">
-        <AcquisitionInsights rows={filteredRows} loading={loading} />
+        <AcquisitionInsights rows={applyFiltersToKpis ? filteredRows : rows} loading={loading} />
       </div>
-
 
       {/* Table */}
       <Card className="mt-4 rounded-2xl border bg-white/95">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold text-slate-700">
-            {tab === "ad" ? "Ad-Level Performance" : tab === "adset" ? "Ad Set-Level Performance" : "Campaign-Level Performance"}
+            {tab === "ad"
+              ? "Ad-Level Performance"
+              : tab === "adset"
+              ? "Ad Set-Level Performance"
+              : "Campaign-Level Performance"}
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0 overflow-x-auto">
-          <div className="mb-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search product, campaign, ad set, ad, account, placement, platform, device, country, age…"
-              className="max-w-2xl"
-            />
-          </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-slate-500">
-                <th className="py-2 pr-3">{tab === "ad" ? "Ad" : tab === "adset" ? "Ad Set" : "Campaign"}</th>
+                <th className="py-2 pr-3">
+                  {tab === "ad" ? "Ad" : tab === "adset" ? "Ad Set" : "Campaign"}
+                </th>
                 <th className="py-2 pr-3">Decision</th>
                 <th className="py-2 pr-3">Product</th>
                 <th className="py-2 pr-3">Channel</th>
@@ -584,12 +815,24 @@ export default function PerformancePage() {
                   <td className="py-2 pr-3">{fmt(r.purchases)}</td>
                   <td className="py-2 pr-3">{currency(r.spend)}</td>
                   <td className="py-2 pr-3">{currency(r.rev)}</td>
-                  <td className="py-2 pr-3">{r.roas == null ? "–" : `${r.roas.toFixed(2)}x`}</td>
-                  <td className="py-2 pr-3">{r.cpc == null ? "–" : currency(r.cpc)}</td>
-                  <td className="py-2 pr-3">{r.cpl == null ? "–" : currency(r.cpl)}</td>
-                  <td className="py-2 pr-3">{r.cpa == null ? "–" : currency(r.cpa)}</td>
-                  <td className="py-2 pr-3">{r.cpcb == null ? "–" : currency(r.cpcb)}</td>
-                  <td className="py-2 pr-0">{r.ctr == null ? "–" : `${((r.ctr as number) * 100).toFixed(2)}%`}</td>
+                  <td className="py-2 pr-3">
+                    {r.roas == null ? "–" : `${r.roas.toFixed(2)}x`}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {r.cpc == null ? "–" : currency(r.cpc)}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {r.cpl == null ? "–" : currency(r.cpl)}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {r.cpa == null ? "–" : currency(r.cpa)}
+                  </td>
+                  <td className="py-2 pr-3">
+                    {r.cpcb == null ? "–" : currency(r.cpcb)}
+                  </td>
+                  <td className="py-2 pr-0">
+                    {r.ctr == null ? "–" : `${((r.ctr as number) * 100).toFixed(2)}%`}
+                  </td>
                 </tr>
               ))}
               {!tableRows.length && (
@@ -601,6 +844,11 @@ export default function PerformancePage() {
               )}
             </tbody>
           </table>
+
+          {/* quick diagnostics (remove if not needed) */}
+          <div className="mt-2 text-xs text-slate-500">
+            Raw rows: {rows.length} • Filtered rows: {filteredRows.length}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -610,9 +858,14 @@ export default function PerformancePage() {
 /* ---- small bits ---- */
 
 function AccountSelect({
-  currentId, currentLabel, accounts, onChange,
+  currentId,
+  currentLabel,
+  accounts,
+  onChange,
 }: {
-  currentId: string; currentLabel: string; accounts: { key: string; label: string }[];
+  currentId: string;
+  currentLabel: string;
+  accounts: { key: string; label: string }[];
   onChange: (id: string, label: string) => void;
 }) {
   const [mounted, setMounted] = React.useState(false);
@@ -621,18 +874,24 @@ function AccountSelect({
     <Select
       value={currentId}
       onValueChange={(val) => {
-        const lbl = accounts.find(a => a.key === val)?.label || (val === "all" ? "All Accounts" : val);
+        const lbl =
+          accounts.find((a) => a.key === val)?.label ||
+          (val === "all" ? "All Accounts" : val);
         onChange(val, lbl);
       }}
     >
       <SelectTrigger className="h-9 w-[210px]">
         <SelectValue placeholder="All Accounts">
-          <span suppressHydrationWarning>{mounted ? currentLabel : "All Accounts"}</span>
+          <span suppressHydrationWarning>
+            {mounted ? currentLabel : "All Accounts"}
+          </span>
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {accounts.map((a) => (
-          <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>
+          <SelectItem key={a.key} value={a.key}>
+            {a.label}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>
@@ -651,8 +910,16 @@ function Stat({ title, value }: { title: string; value: React.ReactNode }) {
 }
 
 function Field({
-  label, value, onChange, step = "1",
-}: { label: string; value: number; onChange: (v: number) => void; step?: string }) {
+  label,
+  value,
+  onChange,
+  step = "1",
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: string;
+}) {
   return (
     <div className="px-1 py-1.5">
       <div className="text-[11px] text-slate-600 mb-1">{label}</div>
@@ -670,7 +937,13 @@ function Field({
   );
 }
 
-function Badge({ tone, children }: { tone: "green" | "amber" | "red" | "muted"; children: React.ReactNode }) {
+function Badge({
+  tone,
+  children,
+}: {
+  tone: "green" | "amber" | "red" | "muted";
+  children: React.ReactNode;
+}) {
   const map: Record<typeof tone, string> = {
     green: "bg-green-100 text-green-800 border-green-200",
     amber: "bg-amber-100 text-amber-800 border-amber-200",
@@ -678,49 +951,10 @@ function Badge({ tone, children }: { tone: "green" | "amber" | "red" | "muted"; 
     muted: "bg-slate-100 text-slate-700 border-slate-200",
   };
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${map[tone]}`}>
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${map[tone]}`}
+    >
       {children}
     </span>
-  );
-}
-
-function DimList({
-  title, data,
-}: {
-  title: string;
-  data?: { byLeads: { name: string; leads: number }[]; byPurch: { name: string; purchases: number }[] };
-}) {
-  return (
-    <div>
-      <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">{title}</div>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg border p-2">
-          <div className="text-[11px] text-slate-500 mb-1">By Leads</div>
-          <ul className="space-y-1">
-            {data?.byLeads?.length
-              ? data.byLeads.map((x, i) => (
-                  <li key={i} className="flex justify-between text-sm">
-                    <span className="truncate">{x.name}</span>
-                    <span className="font-medium">{fmt(x.leads)}</span>
-                  </li>
-                ))
-              : <li className="text-sm text-slate-400">No data</li>}
-          </ul>
-        </div>
-        <div className="rounded-lg border p-2">
-          <div className="text-[11px] text-slate-500 mb-1">By Purchases</div>
-          <ul className="space-y-1">
-            {data?.byPurch?.length
-              ? data.byPurch.map((x, i) => (
-                  <li key={i} className="flex justify-between text-sm">
-                    <span className="truncate">{x.name}</span>
-                    <span className="font-medium">{fmt(x.purchases)}</span>
-                  </li>
-                ))
-              : <li className="text-sm text-slate-400">No data</li>}
-          </ul>
-        </div>
-      </div>
-    </div>
   );
 }
