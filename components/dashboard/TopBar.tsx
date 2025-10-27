@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { ChevronDown, LogOut, Settings, User } from "lucide-react";
 import { useAccount } from "@/components/dashboard/AccountContext";
-import { supabase } from "@/lib/supabase/client";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 
 export function TopBar({
   title, subtitle,
@@ -38,7 +38,7 @@ export function TopBar({
   }, [accountLabel]);
 
   const onLogout = async () => {
-    try { await supabase.auth.signOut(); } catch {}
+    try { await getBrowserSupabase(); } catch {}
     window.location.href = "/login";
   };
 

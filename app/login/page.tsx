@@ -1,12 +1,18 @@
+// app/login/page.tsx
 "use client";
 
 import * as React from "react";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 export default function LoginPage() {
+  const supabase = getBrowserSupabase();
   const router = useRouter();
   const next = useSearchParams().get("next") || "/dashboard";
 
@@ -24,7 +30,7 @@ export default function LoginPage() {
   const [resetMsg, setResetMsg] = React.useState<string | null>(null);
   const [resetErr, setResetErr] = React.useState<string | null>(null);
 
-  const onLogin = async (e: React.FormEvent) => {
+const onLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErr(null);
     setLoggingIn(true);
@@ -53,11 +59,16 @@ export default function LoginPage() {
     setResetMsg("If an account exists for that email, a reset link has been sent.");
   };
 
+  if (!supabase) {
+    // Friendly message when envs aren’t present in preview/build
   return (
     <div className="mx-auto max-w-sm py-16">
       {mode === "login" ? (
         <>
           <h1 className="mb-6 text-2xl font-semibold">Sign in</h1>
+            Supabase credentials are missing. Set{" "}
+          <code>NEXT_PUBLIC_SUPABASE_URL</code> and{" "}
+          <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> in your environment.
           <form className="space-y-3" onSubmit={onLogin}>
             <Input
               type="email"
@@ -122,4 +133,6 @@ export default function LoginPage() {
       )}
     </div>
   );
+   
+  }
 }
