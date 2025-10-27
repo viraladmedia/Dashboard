@@ -1,116 +1,121 @@
+// File: app/reset-password/page.tsx
 "use client";
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { getBrowserSupabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-  const next = sp.get("next") || "/dashboard";
+  const search = useSearchParams();
 
-  const [ready, setReady] = React.useState(false);
-  const [password, setPassword] = React.useState("");
-  const [confirm, setConfirm] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-  const [msg, setMsg] = React.useState<string | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
+  const sb = React.useMemo(() => getBrowserSupabase(), []);
+  const [stage, setStage] = React.useState<"verifying" | "ready" | "done" | "error">("verifying");
+  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  // 1) When arriving from the email link, there should be a `code` query param.
-  //    We must exchange it for a session before calling updateUser.
+  const [p1, setP1] = React.useState("");
+  const [p2, setP2] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  // 1) When user lands from the email link (?code=...), exchange for a session.
   React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      // already logged in? good—allow reset
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData.session) {
-        if (!cancelled) setReady(true);
-        return;
-      }
-
-      const code = sp.get("code");
+    const run = async () => {
+      if (!sb) return;
+      const code = search.get("code");
       if (!code) {
-        // Some links still deliver tokens in hash; try full URL just in case:
-        const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
-        if (!error && !cancelled) {
-          setReady(true);
-          return;
-        }
-        if (!cancelled) setErr("Invalid or expired reset link. Request a new one from the login page.");
+        setErrorMsg("Missing reset code. Please use the password reset link from your email.");
+        setStage("error");
         return;
       }
-
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      const { error } = await sb.auth.exchangeCodeForSession(code);
       if (error) {
-        if (!cancelled) setErr(error.message);
+        setErrorMsg(error.message || "Could not verify reset link.");
+        setStage("error");
         return;
       }
-      if (!cancelled) setReady(true);
-    })();
+      setStage("ready");
+    };
+    run();
+  }, [sb, search]);
 
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // 2) Submit new password
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErr(null);
-    setMsg(null);
-    if (!password || password !== confirm) {
-      setErr("Passwords do not match.");
+    setErrorMsg(null);
+
+    if (!sb) return;
+    if (p1.length < 8) {
+      setErrorMsg("Password must be at least 8 characters.");
       return;
     }
-    setSaving(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setSaving(false);
+    if (p1 !== p2) {
+      setErrorMsg("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    setLoading(false);
+
     if (error) {
-      setErr(error.message);
+      setErrorMsg(error.message);
       return;
     }
-    setMsg("Password updated. Redirecting…");
-    setTimeout(() => router.replace(next), 800);
+
+    setStage("done");
+    // Optional redirect after a short delay
+    setTimeout(() => router.replace("/login?reset=1"), 900);
   };
 
   return (
     <div className="mx-auto max-w-sm py-16">
-      <h1 className="mb-6 text-2xl font-semibold">Set a new password</h1>
+      <h1 className="mb-6 text-2xl font-semibold">Reset password</h1>
 
-      {!ready && !err && (
-        <p className="text-sm text-slate-600">Validating reset link…</p>
+      {stage === "verifying" && (
+        <p className="text-sm text-slate-600">Verifying your reset link…</p>
       )}
 
-      {err && (
-        <div className="space-y-3">
-          <p className="text-sm text-red-600">{err}</p>
-          <a href="/login" className="text-sm text-indigo-600 hover:underline">Back to login</a>
-        </div>
+      {stage === "error" && (
+        <>
+          <p className="mb-4 text-sm text-red-600">{errorMsg}</p>
+          <a href="/login" className="text-sm text-indigo-600 hover:underline">
+            Back to sign in
+          </a>
+        </>
       )}
 
-      {ready && !err && (
+      {stage === "ready" && (
         <form className="space-y-3" onSubmit={onSubmit}>
           <Input
             type="password"
             placeholder="New password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            value={p1}
+            onChange={(e) => setP1(e.target.value)}
             required
             autoComplete="new-password"
           />
           <Input
             type="password"
             placeholder="Confirm new password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
+            value={p2}
+            onChange={(e) => setP2(e.target.value)}
             required
             autoComplete="new-password"
           />
-          <Button type="submit" disabled={saving} className="w-full">
-            {saving ? "Saving…" : "Update password"}
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? "Saving…" : "Set new password"}
           </Button>
-          {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+          {errorMsg && <p className="text-xs text-red-600">{errorMsg}</p>}
         </form>
+      )}
+
+      {stage === "done" && (
+        <>
+          <p className="mb-2 text-sm text-emerald-600">Password updated successfully.</p>
+          <p className="text-sm text-slate-600">Redirecting you to sign in…</p>
+        </>
       )}
     </div>
   );
