@@ -2,14 +2,26 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+export const dynamic = "force-dynamic"; // avoid SSG since we read search params
+
 export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-sm py-16 text-sm text-slate-600">Loading…</div>}>
+      <SignupInner />
+    </Suspense>
+  );
+}
+
+function SignupInner() {
   const router = useRouter();
-  const next = useSearchParams().get("next") || "/dashboard";
+  const sp = useSearchParams();
+  const next = sp.get("next") || "/dashboard";
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -22,43 +34,32 @@ export default function SignupPage() {
     e.preventDefault();
     setErr(null);
     setMsg(null);
-
-    const sb = getBrowserSupabase();
-    if (!sb) {
-      setErr("Supabase client unavailable in this environment.");
-      return;
-    }
-
     setLoading(true);
+
     try {
-      // Where to send the email confirmation link (if confirmations are enabled)
-      const redirect =
-        (typeof window !== "undefined" ? window.location.origin : "") + "/dashboard";
+      const sb = getBrowserSupabase();
+      if (!sb) throw new Error("Supabase unavailable");
 
       const { data, error } = await sb.auth.signUp({
         email,
         password,
         options: {
           data: { name },
-          emailRedirectTo: redirect,
+          emailRedirectTo: `${location.origin}/login?next=${encodeURIComponent(next)}`,
         },
       });
+      if (error) throw error;
 
-      if (error) {
-        setErr(error.message);
-        return;
-      }
-
-      // If email confirmations are required, the user will exist but no session yet
-      if (data?.user && !data?.session) {
+      // If email confirmations are enabled, the user may not have a session yet.
+      if (data.user && !data.session) {
         setMsg("Check your email to confirm your account, then sign in.");
         return;
       }
 
-      // Otherwise they’re signed in immediately
+      // Otherwise they’re signed in—go to next page.
       router.replace(next);
-    } catch (e) {
-      setErr((e as Error).message);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to create account.");
     } finally {
       setLoading(false);
     }
