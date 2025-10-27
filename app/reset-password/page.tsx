@@ -2,121 +2,125 @@
 "use client";
 
 import * as React from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+export const dynamic = "force-dynamic"; // avoid SSG for this page
+
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-sm py-16 text-sm text-slate-600">Loading…</div>}>
+      <ResetPasswordInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordInner() {
   const router = useRouter();
-  const search = useSearchParams();
+  const sp = useSearchParams();
+  const next = sp.get("next") || "/dashboard";
 
-  const sb = React.useMemo(() => getBrowserSupabase(), []);
-  const [stage, setStage] = React.useState<"verifying" | "ready" | "done" | "error">("verifying");
-  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
-
-  const [p1, setP1] = React.useState("");
-  const [p2, setP2] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [phase, setPhase] = React.useState<"request" | "update">("request");
   const [loading, setLoading] = React.useState(false);
+  const [msg, setMsg] = React.useState<string | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
 
-  // 1) When user lands from the email link (?code=...), exchange for a session.
+  // If the user arrives from the Supabase recovery link, they'll have a session.
+  // In that case we show the "update password" form automatically.
   React.useEffect(() => {
-    const run = async () => {
+    (async () => {
+      const sb = getBrowserSupabase();
       if (!sb) return;
-      const code = search.get("code");
-      if (!code) {
-        setErrorMsg("Missing reset code. Please use the password reset link from your email.");
-        setStage("error");
-        return;
-      }
-      const { error } = await sb.auth.exchangeCodeForSession(code);
-      if (error) {
-        setErrorMsg(error.message || "Could not verify reset link.");
-        setStage("error");
-        return;
-      }
-      setStage("ready");
-    };
-    run();
-  }, [sb, search]);
+      const { data } = await sb.auth.getSession();
+      if (data.session) setPhase("update");
+    })();
+  }, []);
 
-  // 2) Submit new password
-  const onSubmit = async (e: React.FormEvent) => {
+  const onRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(null);
-
-    if (!sb) return;
-    if (p1.length < 8) {
-      setErrorMsg("Password must be at least 8 characters.");
-      return;
+    setErr(null); setMsg(null); setLoading(true);
+    try {
+      const sb = getBrowserSupabase();
+      if (!sb) throw new Error("Supabase unavailable");
+      const { error } = await sb.auth.resetPasswordForEmail(email, {
+        redirectTo: `${location.origin}/reset-password?next=${encodeURIComponent(next)}`,
+      });
+      if (error) throw error;
+      setMsg("Check your inbox for the password reset link.");
+    } catch (e: any) {
+      setErr(e?.message || "Failed to send reset email.");
+    } finally {
+      setLoading(false);
     }
-    if (p1 !== p2) {
-      setErrorMsg("Passwords do not match.");
-      return;
+  };
+
+  const onUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr(null); setMsg(null); setLoading(true);
+    try {
+      const sb = getBrowserSupabase();
+      if (!sb) throw new Error("Supabase unavailable");
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setMsg("Password updated. Redirecting…");
+      setTimeout(() => router.replace(next), 800);
+    } catch (e: any) {
+      setErr(e?.message || "Failed to update password.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(true);
-    const { error } = await sb.auth.updateUser({ password: p1 });
-    setLoading(false);
-
-    if (error) {
-      setErrorMsg(error.message);
-      return;
-    }
-
-    setStage("done");
-    // Optional redirect after a short delay
-    setTimeout(() => router.replace("/login?reset=1"), 900);
   };
 
   return (
     <div className="mx-auto max-w-sm py-16">
-      <h1 className="mb-6 text-2xl font-semibold">Reset password</h1>
-
-      {stage === "verifying" && (
-        <p className="text-sm text-slate-600">Verifying your reset link…</p>
-      )}
-
-      {stage === "error" && (
+      {phase === "request" ? (
         <>
-          <p className="mb-4 text-sm text-red-600">{errorMsg}</p>
-          <a href="/login" className="text-sm text-indigo-600 hover:underline">
-            Back to sign in
-          </a>
+          <h1 className="mb-6 text-2xl font-semibold">Reset your password</h1>
+          <form className="space-y-3" onSubmit={onRequest}>
+            <Input
+              type="email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Sending…" : "Send reset link"}
+            </Button>
+            {err && <p className="text-xs text-red-600">{err}</p>}
+            {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+          </form>
+        </>
+      ) : (
+        <>
+          <h1 className="mb-6 text-2xl font-semibold">Set a new password</h1>
+          <form className="space-y-3" onSubmit={onUpdate}>
+            <Input
+              type="password"
+              placeholder="New strong password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? "Updating…" : "Update password"}
+            </Button>
+            {err && <p className="text-xs text-red-600">{err}</p>}
+            {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+          </form>
         </>
       )}
 
-      {stage === "ready" && (
-        <form className="space-y-3" onSubmit={onSubmit}>
-          <Input
-            type="password"
-            placeholder="New password"
-            value={p1}
-            onChange={(e) => setP1(e.target.value)}
-            required
-            autoComplete="new-password"
-          />
-          <Input
-            type="password"
-            placeholder="Confirm new password"
-            value={p2}
-            onChange={(e) => setP2(e.target.value)}
-            required
-            autoComplete="new-password"
-          />
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Saving…" : "Set new password"}
-          </Button>
-          {errorMsg && <p className="text-xs text-red-600">{errorMsg}</p>}
-        </form>
-      )}
-
-      {stage === "done" && (
-        <>
-          <p className="mb-2 text-sm text-emerald-600">Password updated successfully.</p>
-          <p className="text-sm text-slate-600">Redirecting you to sign in…</p>
-        </>
-      )}
+      <div className="mt-4 text-sm text-slate-600">
+        <a href="/login" className="text-indigo-600 hover:underline">Back to sign in</a>
+      </div>
     </div>
   );
 }
